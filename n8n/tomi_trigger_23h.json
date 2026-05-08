@@ -1,0 +1,86 @@
+{
+  "name": "tomi-trigger-23h",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "minutes", "minutesInterval": 5 }]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-400, 0],
+      "id": "trg-001",
+      "name": "Cada 5 min"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "DELETE FROM tomi_locks WHERE acquired_at < NOW() - INTERVAL '10 minutes';",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [-160, 0],
+      "id": "pg-cleanup-001",
+      "name": "Limpiar locks viejos",
+      "credentials": {
+        "postgres": { "id": "REEMPLAZAR_POR_CREDENCIAL_SUPABASE", "name": "Supabase Postgres" }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH last_user AS (\n  SELECT DISTINCT ON (wa_id)\n         wa_id, sender_name, content, created_at\n  FROM messages\n  WHERE direction = 'cliente'\n  ORDER BY wa_id, created_at DESC\n),\ncandidates AS (\n  SELECT lu.*\n  FROM last_user lu\n  WHERE lu.created_at <= NOW() - INTERVAL '23 hours'\n    AND lu.created_at >  NOW() - INTERVAL '24 hours'\n    AND NOT EXISTS (\n      SELECT 1 FROM messages m\n      WHERE m.wa_id = lu.wa_id AND m.created_at > lu.created_at\n    )\n  LIMIT 20\n),\nlocked AS (\n  INSERT INTO tomi_locks (wa_id)\n  SELECT wa_id FROM candidates\n  ON CONFLICT (wa_id) DO NOTHING\n  RETURNING wa_id\n)\nSELECT c.wa_id,\n       c.sender_name,\n       c.content    AS last_user_message,\n       c.created_at AS user_at,\n       EXTRACT(EPOCH FROM (NOW() - c.created_at))::int AS waited_seconds\nFROM candidates c\nJOIN locked l USING (wa_id);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [80, 0],
+      "id": "pg-findlock-001",
+      "name": "Buscar y bloquear conversaciones",
+      "credentials": {
+        "postgres": { "id": "REEMPLAZAR_POR_CREDENCIAL_SUPABASE", "name": "Supabase Postgres" }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://n8n.babilonia.ai/webhook/tomi-responder",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "X-Trigger-Source", "value": "tomi-trigger-23h" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"wa_id\": \"{{ $json.wa_id }}\",\n  \"sender_name\": \"{{ $json.sender_name }}\",\n  \"last_user_message\": {{ JSON.stringify($json.last_user_message) }},\n  \"user_at\": \"{{ $json.user_at }}\",\n  \"waited_seconds\": {{ $json.waited_seconds }}\n}",
+        "options": {
+          "timeout": 60000,
+          "response": { "response": { "neverError": true } }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [320, 0],
+      "id": "http-tomi-001",
+      "name": "Disparar Tomi"
+    }
+  ],
+  "connections": {
+    "Cada 5 min": {
+      "main": [[{ "node": "Limpiar locks viejos", "type": "main", "index": 0 }]]
+    },
+    "Limpiar locks viejos": {
+      "main": [[{ "node": "Buscar y bloquear conversaciones", "type": "main", "index": 0 }]]
+    },
+    "Buscar y bloquear conversaciones": {
+      "main": [[{ "node": "Disparar Tomi", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "tags": []
+}

@@ -66,3 +66,9 @@ create table if not exists public.agent_chats (
   created_at timestamptz not null default now()
 );
 create index if not exists idx_agentchats_user_at on public.agent_chats (user_id, created_at desc);
+
+-- ─── tomi_locks: lock anti-doble-disparo del workflow tomi-trigger-23h
+create table if not exists public.tomi_locks (
+  wa_id       text primary key,
+  acquired_at timestamptz not null default now()
+);

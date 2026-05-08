@@ -1,0 +1,70 @@
+{
+  "_comment": "Snippet para AGREGAR al workflow `tomi unificado` existente. Pegá estos 3 nodos al inicio del flujo, justo antes del primer nodo del agente AI. El Webhook reemplaza al trigger viejo de WATI, o convive con él (multi-trigger).",
+  "name": "tomi-webhook-entry (snippet)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "tomi-responder",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [-800, 0],
+      "id": "wh-tomi-001",
+      "name": "Webhook Tomi (trigger 23h)",
+      "webhookId": "tomi-responder-bridge"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "t1", "name": "wa_id",             "value": "={{ $json.body.wa_id }}",             "type": "string" },
+            { "id": "t2", "name": "sender_name",       "value": "={{ $json.body.sender_name }}",       "type": "string" },
+            { "id": "t3", "name": "last_user_message", "value": "={{ $json.body.last_user_message }}", "type": "string" },
+            { "id": "t4", "name": "user_at",           "value": "={{ $json.body.user_at }}",           "type": "string" },
+            { "id": "t5", "name": "waited_seconds",    "value": "={{ $json.body.waited_seconds }}",    "type": "number" },
+            { "id": "t6", "name": "trigger_source",    "value": "auto-23h",                            "type": "string" }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-560, 0],
+      "id": "set-tomi-001",
+      "name": "Mapear payload"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"status\": \"queued\", \"wa_id\": \"{{ $json.wa_id }}\" }",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [-560, 200],
+      "id": "resp-tomi-001",
+      "name": "Responder 200 OK al trigger"
+    }
+  ],
+  "connections": {
+    "Webhook Tomi (trigger 23h)": {
+      "main": [
+        [
+          { "node": "Mapear payload",                "type": "main", "index": 0 },
+          { "node": "Responder 200 OK al trigger",   "type": "main", "index": 0 }
+        ]
+      ]
+    }
+  },
+  "_instrucciones": [
+    "1. En n8n, abrí el workflow `tomi unificado`.",
+    "2. Importá estos nodos (n8n permite pegar JSON con Ctrl+V dentro del canvas).",
+    "3. Conectá la salida de `Mapear payload` al primer nodo del agente AI (donde antes entraba el mensaje del usuario).",
+    "4. Asegurate de que el agente use $json.last_user_message como input (en vez de $json.body.text del trigger viejo).",
+    "5. El trigger viejo de WATI (si existe) lo podés dejar funcionando en paralelo — los dos triggers convergen en el mismo flujo de respuesta.",
+    "6. Activá el workflow."
+  ]
+}
