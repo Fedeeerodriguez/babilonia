@@ -103,8 +103,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO messages (wa_id, sender_name, operator_name, operator_email, direction, message_type, template_name, content, event_type, wati_message_id, raw) VALUES ('{{ $json.id_cliente }}', NULLIF('{{ $json.nombre_cliente }}',''), NULL, NULL, 'cliente', '{{ $json.tipo_de_mensaje }}', NULL, replace('{{ $json.mensaje }}', '''', ''''''), NULLIF('{{ $json.event_type }}',''), NULLIF('{{ $json.wati_message_id }}',''), $1::jsonb);",
-        "additionalFields": { "queryParams": "={{ JSON.stringify($json) }}" },
+        "query": "INSERT INTO messages (wa_id, sender_name, operator_name, operator_email, direction, message_type, template_name, content, event_type, wati_message_id, raw)\nVALUES (\n  '{{ $json.id_cliente }}',\n  NULLIF('{{ $json.nombre_cliente }}',''),\n  NULL,\n  NULL,\n  'cliente',\n  '{{ $json.tipo_de_mensaje }}',\n  NULL,\n  replace('{{ $json.mensaje }}', '''', ''''''),\n  NULLIF('{{ $json.event_type }}',''),\n  NULLIF('{{ $json.wati_message_id }}',''),\n  jsonb_build_object(\n    'wa_id',           '{{ $json.id_cliente }}',\n    'sender_name',     '{{ $json.nombre_cliente }}',\n    'event_type',      '{{ $json.event_type }}',\n    'wati_message_id', '{{ $json.wati_message_id }}',\n    'tipo_de_mensaje', '{{ $json.tipo_de_mensaje }}'\n  )\n);",
         "options": {}
       },
       "type": "n8n-nodes-base.postgres",
@@ -117,8 +116,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO messages (wa_id, sender_name, operator_name, operator_email, direction, message_type, template_name, content, event_type, wati_message_id, raw) VALUES ('{{ $json.id_cliente }}', NULLIF('{{ $json.nombre_cliente }}',''), NULLIF('{{ $json.nombre_equipo }}',''), NULLIF('{{ $json.operator_email }}',''), 'asesor', '{{ $json.tipo_de_mensaje }}', NULL, replace('{{ $json.mensaje }}', '''', ''''''), NULLIF('{{ $json.event_type }}',''), NULLIF('{{ $json.wati_message_id }}',''), $1::jsonb);",
-        "additionalFields": { "queryParams": "={{ JSON.stringify($json) }}" },
+        "query": "INSERT INTO messages (wa_id, sender_name, operator_name, operator_email, direction, message_type, template_name, content, event_type, wati_message_id, raw)\nVALUES (\n  '{{ $json.id_cliente }}',\n  NULLIF('{{ $json.nombre_cliente }}',''),\n  NULLIF('{{ $json.nombre_equipo }}',''),\n  NULLIF('{{ $json.operator_email }}',''),\n  'asesor',\n  '{{ $json.tipo_de_mensaje }}',\n  NULL,\n  replace('{{ $json.mensaje }}', '''', ''''''),\n  NULLIF('{{ $json.event_type }}',''),\n  NULLIF('{{ $json.wati_message_id }}',''),\n  jsonb_build_object(\n    'wa_id',           '{{ $json.id_cliente }}',\n    'sender_name',     '{{ $json.nombre_cliente }}',\n    'operator_name',   '{{ $json.nombre_equipo }}',\n    'operator_email',  '{{ $json.operator_email }}',\n    'event_type',      '{{ $json.event_type }}',\n    'wati_message_id', '{{ $json.wati_message_id }}',\n    'tipo_de_mensaje', '{{ $json.tipo_de_mensaje }}'\n  )\n);",
         "options": {}
       },
       "type": "n8n-nodes-base.postgres",
@@ -131,8 +129,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO messages (wa_id, sender_name, operator_name, operator_email, direction, message_type, template_name, content, event_type, wati_message_id, raw) VALUES ('{{ $json.id_cliente }}', NULLIF('{{ $json.nombre_cliente }}',''), NULLIF('{{ $json.nombre_equipo }}',''), NULLIF('{{ $json.operator_email }}',''), 'template', '{{ $json.tipo_de_mensaje }}', NULLIF('{{ $json.template_name }}',''), replace('{{ $json.mensaje }}', '''', ''''''), NULLIF('{{ $json.event_type }}',''), NULLIF('{{ $json.wati_message_id }}',''), $1::jsonb);",
-        "additionalFields": { "queryParams": "={{ JSON.stringify($json) }}" },
+        "query": "INSERT INTO messages (wa_id, sender_name, operator_name, operator_email, direction, message_type, template_name, content, event_type, wati_message_id, raw)\nVALUES (\n  '{{ $json.id_cliente }}',\n  NULLIF('{{ $json.nombre_cliente }}',''),\n  NULLIF('{{ $json.nombre_equipo }}',''),\n  NULLIF('{{ $json.operator_email }}',''),\n  'template',\n  '{{ $json.tipo_de_mensaje }}',\n  NULLIF('{{ $json.template_name }}',''),\n  replace('{{ $json.mensaje }}', '''', ''''''),\n  NULLIF('{{ $json.event_type }}',''),\n  NULLIF('{{ $json.wati_message_id }}',''),\n  jsonb_build_object(\n    'wa_id',           '{{ $json.id_cliente }}',\n    'sender_name',     '{{ $json.nombre_cliente }}',\n    'operator_name',   '{{ $json.nombre_equipo }}',\n    'operator_email',  '{{ $json.operator_email }}',\n    'template_name',   '{{ $json.template_name }}',\n    'event_type',      '{{ $json.event_type }}',\n    'wati_message_id', '{{ $json.wati_message_id }}',\n    'tipo_de_mensaje', '{{ $json.tipo_de_mensaje }}'\n  )\n);",
         "options": {}
       },
       "type": "n8n-nodes-base.postgres",
