@@ -91,7 +91,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"wa_id\": \"{{ $json.wa_id }}\",\n  \"sender_name\": \"{{ $json.sender_name }}\",\n  \"last_user_message\": {{ JSON.stringify($json.last_user_message) }},\n  \"user_at\": \"{{ $json.user_at }}\",\n  \"waited_seconds\": {{ $json.waited_seconds }}\n}",
+        "jsonBody": "={\n  \"wa_id\": {{ JSON.stringify($json.wa_id) }},\n  \"sender_name\": {{ JSON.stringify($json.sender_name) }},\n  \"last_user_message\": {{ JSON.stringify($json.last_user_message) }},\n  \"user_at\": {{ JSON.stringify($json.user_at) }},\n  \"waited_seconds\": {{ $json.waited_seconds }}\n}",
         "options": {
           "timeout": 60000,
           "response": { "response": { "neverError": true } }
