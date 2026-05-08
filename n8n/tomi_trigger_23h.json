@@ -7,24 +7,9 @@
       },
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [-720, 0],
+      "position": [-480, 0],
       "id": "trg-001",
       "name": "Cada 5 min"
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "DELETE FROM tomi_locks WHERE acquired_at < NOW() - INTERVAL '10 minutes';",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [-480, 0],
-      "id": "pg-cleanup-001",
-      "name": "Limpiar locks viejos",
-      "credentials": {
-        "postgres": { "id": "REEMPLAZAR_POR_CREDENCIAL_SUPABASE", "name": "Supabase Postgres" }
-      }
     },
     {
       "parameters": {
@@ -65,21 +50,6 @@
     },
     {
       "parameters": {
-        "operation": "executeQuery",
-        "query": "WITH lock_attempt AS (\n  INSERT INTO tomi_locks (wa_id)\n  VALUES ('{{ $json.wa_id }}')\n  ON CONFLICT (wa_id) DO NOTHING\n  RETURNING wa_id\n)\nSELECT\n  '{{ $json.wa_id }}'::text                    AS wa_id,\n  '{{ $json.sender_name }}'::text              AS sender_name,\n  $msg${{ $json.last_user_message }}$msg$::text AS last_user_message,\n  '{{ $json.user_at }}'::timestamptz           AS user_at,\n  {{ $json.waited_seconds }}::int              AS waited_seconds\nFROM lock_attempt;",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [240, 0],
-      "id": "pg-lock-001",
-      "name": "Lock + pass-through",
-      "credentials": {
-        "postgres": { "id": "REEMPLAZAR_POR_CREDENCIAL_SUPABASE", "name": "Supabase Postgres" }
-      }
-    },
-    {
-      "parameters": {
         "method": "POST",
         "url": "https://n8n.babilonia.ai/webhook/tomi-responder",
         "sendHeaders": true,
@@ -99,16 +69,13 @@
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [480, 0],
+      "position": [240, 0],
       "id": "http-tomi-001",
       "name": "Disparar Tomi"
     }
   ],
   "connections": {
     "Cada 5 min": {
-      "main": [[{ "node": "Limpiar locks viejos", "type": "main", "index": 0 }]]
-    },
-    "Limpiar locks viejos": {
       "main": [[{ "node": "Buscar candidatos", "type": "main", "index": 0 }]]
     },
     "Buscar candidatos": {
@@ -116,12 +83,9 @@
     },
     "¿Hay candidato?": {
       "main": [
-        [{ "node": "Lock + pass-through", "type": "main", "index": 0 }],
+        [{ "node": "Disparar Tomi", "type": "main", "index": 0 }],
         []
       ]
-    },
-    "Lock + pass-through": {
-      "main": [[{ "node": "Disparar Tomi", "type": "main", "index": 0 }]]
     }
   },
   "active": false,
