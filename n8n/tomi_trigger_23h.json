@@ -3,13 +3,11 @@
   "nodes": [
     {
       "parameters": {
-        "rule": {
-          "interval": [{ "field": "minutes", "minutesInterval": 5 }]
-        }
+        "rule": { "interval": [{ "field": "minutes", "minutesInterval": 5 }] }
       },
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [-560, 0],
+      "position": [-720, 0],
       "id": "trg-001",
       "name": "Cada 5 min"
     },
@@ -21,7 +19,7 @@
       },
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [-320, 0],
+      "position": [-480, 0],
       "id": "pg-cleanup-001",
       "name": "Limpiar locks viejos",
       "credentials": {
@@ -36,12 +34,34 @@
       },
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [-80, 0],
+      "position": [-240, 0],
       "id": "pg-find-001",
       "name": "Buscar candidatos",
       "credentials": {
         "postgres": { "id": "REEMPLAZAR_POR_CREDENCIAL_SUPABASE", "name": "Supabase Postgres" }
       }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 },
+          "conditions": [
+            {
+              "id": "if-has-waid",
+              "leftValue": "={{ $json.wa_id }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEmpty", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [0, 0],
+      "id": "if-haswaid-001",
+      "name": "¿Hay candidato?"
     },
     {
       "parameters": {
@@ -51,7 +71,7 @@
       },
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [160, 0],
+      "position": [240, 0],
       "id": "pg-lock-001",
       "name": "Lock + pass-through",
       "credentials": {
@@ -79,7 +99,7 @@
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [400, 0],
+      "position": [480, 0],
       "id": "http-tomi-001",
       "name": "Disparar Tomi"
     }
@@ -92,7 +112,13 @@
       "main": [[{ "node": "Buscar candidatos", "type": "main", "index": 0 }]]
     },
     "Buscar candidatos": {
-      "main": [[{ "node": "Lock + pass-through", "type": "main", "index": 0 }]]
+      "main": [[{ "node": "¿Hay candidato?", "type": "main", "index": 0 }]]
+    },
+    "¿Hay candidato?": {
+      "main": [
+        [{ "node": "Lock + pass-through", "type": "main", "index": 0 }],
+        []
+      ]
     },
     "Lock + pass-through": {
       "main": [[{ "node": "Disparar Tomi", "type": "main", "index": 0 }]]
