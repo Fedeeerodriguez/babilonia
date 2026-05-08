@@ -1,0 +1,157 @@
+{
+  "name": "actualizacion contexto wati",
+  "nodes": [
+    {
+      "parameters": { "httpMethod": "POST", "path": "tommysupabase", "options": {} },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [-288, 192],
+      "id": "42cc959e-8511-4ef0-b3ec-9f2d0320a625",
+      "name": "Webhook",
+      "webhookId": "d31576de-051b-4f8a-8040-08ca41fd1e7d"
+    },
+    {
+      "parameters": {
+        "assignments": { "assignments": [
+          { "id": "f1",  "name": "nombre_cliente",   "value": "={{ $json.body.senderName ?? '' }}", "type": "string" },
+          { "id": "f2",  "name": "mensaje",          "value": "={{ $json.body.text }}",            "type": "string" },
+          { "id": "f3",  "name": "id_cliente",       "value": "={{ $json.body.waId }}",            "type": "string" },
+          { "id": "f4",  "name": "emisor",           "value": "={{ $json.body.owner ?? true }}",   "type": "boolean" },
+          { "id": "f5",  "name": "tipo_de_mensaje",  "value": "={{ $json.body.type }}",            "type": "string" },
+          { "id": "f6",  "name": "nombre_equipo",    "value": "={{ $json.body.operatorName ?? 'Sistema Automático' }}", "type": "string" },
+          { "id": "f7",  "name": "event_type",       "value": "={{ $json.body.eventType }}",       "type": "string" },
+          { "id": "f8",  "name": "template_name",    "value": "={{ $json.body.templateName ?? '' }}", "type": "string" },
+          { "id": "f9",  "name": "wati_message_id",  "value": "={{ $json.body.id ?? '' }}",        "type": "string" },
+          { "id": "f10", "name": "operator_email",   "value": "={{ $json.body.operatorEmail ?? '' }}", "type": "string" }
+        ] },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-64, 192],
+      "id": "083d7b2e-b218-4833-bb83-bbdb9a0dfa22",
+      "name": "Edit Fields1"
+    },
+    {
+      "parameters": {
+        "rules": { "values": [
+          { "conditions": { "options": { "caseSensitive": true, "typeValidation": "strict", "version": 3 },
+              "conditions": [
+                { "id": "c1", "leftValue": "={{ $json.tipo_de_mensaje }}", "rightValue": "text", "operator": { "type": "string", "operation": "equals" } },
+                { "id": "c2", "leftValue": "={{ $json.emisor }}", "rightValue": false, "operator": { "type": "boolean", "operation": "false" } }
+              ], "combinator": "and" },
+            "renameOutput": true, "outputKey": "cliente" },
+          { "conditions": { "options": { "caseSensitive": true, "typeValidation": "strict", "version": 3 },
+              "conditions": [
+                { "id": "c3", "leftValue": "={{ $json.tipo_de_mensaje }}", "rightValue": "text", "operator": { "type": "string", "operation": "equals" } },
+                { "id": "c4", "leftValue": "={{ $json.emisor }}", "rightValue": true,  "operator": { "type": "boolean", "operation": "true" } }
+              ], "combinator": "and" },
+            "renameOutput": true, "outputKey": "asesor" },
+          { "conditions": { "options": { "caseSensitive": true, "typeValidation": "strict", "version": 3 },
+              "conditions": [
+                { "id": "c5", "leftValue": "={{ $json.tipo_de_mensaje }}", "rightValue": "template", "operator": { "type": "string", "operation": "equals" } }
+              ], "combinator": "and" },
+            "renameOutput": true, "outputKey": "automatico" }
+        ] },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [160, 176],
+      "id": "061db418-7eb4-4796-8e90-1882ce266dbc",
+      "name": "Tipo de mensaje"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO n8n_chat_histories (session_id, message) VALUES ('{{ $json.id_cliente }}', jsonb_build_object('type','human','content', replace('{{ $json.mensaje }}', '''', '''''')));",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [384, 0],
+      "id": "5c7f63ae-7707-45f7-a5f0-98301f83ff27",
+      "name": "Guardar mensaje cliente1",
+      "credentials": { "postgres": { "id": "YkAn096wtNJS3fPB", "name": "Postgres account" } }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO n8n_chat_histories (session_id, message) VALUES ('{{ $json.id_cliente }}', jsonb_build_object('type','ai','content','[ASESOR HUMANO: ' || replace('{{ $json.nombre_equipo }}', '''', '''''') || '] ' || replace('{{ $json.mensaje }}', '''', '''''')));",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [384, 192],
+      "id": "efe567f5-6740-4906-9a3f-f4c2b7d5dfb0",
+      "name": "Guardar mensaje asesor1",
+      "credentials": { "postgres": { "id": "YkAn096wtNJS3fPB", "name": "Postgres account" } }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO n8n_chat_histories (session_id, message) VALUES ('{{ $json.id_cliente }}', jsonb_build_object('type','ai','content','[MENSAJE AUTOMÁTICO - Template: ' || replace('{{ $json.template_name }}', '''', '''''') || '] ' || replace('{{ $json.mensaje }}', '''', '''''')));",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [384, 384],
+      "id": "10a2ebeb-c638-4e16-8232-5965ba484da9",
+      "name": "Guardar mensaje automático",
+      "credentials": { "postgres": { "id": "YkAn096wtNJS3fPB", "name": "Postgres account" } }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO messages (wa_id, sender_name, operator_name, operator_email, direction, message_type, template_name, content, event_type, wati_message_id, raw) VALUES ('{{ $json.id_cliente }}', NULLIF('{{ $json.nombre_cliente }}',''), NULL, NULL, 'cliente', '{{ $json.tipo_de_mensaje }}', NULL, replace('{{ $json.mensaje }}', '''', ''''''), NULLIF('{{ $json.event_type }}',''), NULLIF('{{ $json.wati_message_id }}',''), $1::jsonb);",
+        "additionalFields": { "queryParams": "={{ JSON.stringify($json) }}" },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [624, 0],
+      "id": "msg-cliente-001",
+      "name": "messages: cliente",
+      "credentials": { "postgres": { "id": "YkAn096wtNJS3fPB", "name": "Postgres account" } }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO messages (wa_id, sender_name, operator_name, operator_email, direction, message_type, template_name, content, event_type, wati_message_id, raw) VALUES ('{{ $json.id_cliente }}', NULLIF('{{ $json.nombre_cliente }}',''), NULLIF('{{ $json.nombre_equipo }}',''), NULLIF('{{ $json.operator_email }}',''), 'asesor', '{{ $json.tipo_de_mensaje }}', NULL, replace('{{ $json.mensaje }}', '''', ''''''), NULLIF('{{ $json.event_type }}',''), NULLIF('{{ $json.wati_message_id }}',''), $1::jsonb);",
+        "additionalFields": { "queryParams": "={{ JSON.stringify($json) }}" },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [624, 192],
+      "id": "msg-asesor-001",
+      "name": "messages: asesor",
+      "credentials": { "postgres": { "id": "YkAn096wtNJS3fPB", "name": "Postgres account" } }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO messages (wa_id, sender_name, operator_name, operator_email, direction, message_type, template_name, content, event_type, wati_message_id, raw) VALUES ('{{ $json.id_cliente }}', NULLIF('{{ $json.nombre_cliente }}',''), NULLIF('{{ $json.nombre_equipo }}',''), NULLIF('{{ $json.operator_email }}',''), 'template', '{{ $json.tipo_de_mensaje }}', NULLIF('{{ $json.template_name }}',''), replace('{{ $json.mensaje }}', '''', ''''''), NULLIF('{{ $json.event_type }}',''), NULLIF('{{ $json.wati_message_id }}',''), $1::jsonb);",
+        "additionalFields": { "queryParams": "={{ JSON.stringify($json) }}" },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [624, 384],
+      "id": "msg-template-001",
+      "name": "messages: template",
+      "credentials": { "postgres": { "id": "YkAn096wtNJS3fPB", "name": "Postgres account" } }
+    }
+  ],
+  "connections": {
+    "Webhook":         { "main": [[{ "node": "Edit Fields1", "type": "main", "index": 0 }]] },
+    "Edit Fields1":    { "main": [[{ "node": "Tipo de mensaje", "type": "main", "index": 0 }]] },
+    "Tipo de mensaje": { "main": [
+      [{ "node": "Guardar mensaje cliente1",   "type": "main", "index": 0 }, { "node": "messages: cliente",  "type": "main", "index": 0 }],
+      [{ "node": "Guardar mensaje asesor1",    "type": "main", "index": 0 }, { "node": "messages: asesor",   "type": "main", "index": 0 }],
+      [{ "node": "Guardar mensaje automático", "type": "main", "index": 0 }, { "node": "messages: template", "type": "main", "index": 0 }]
+    ] }
+  },
+  "active": true,
+  "settings": { "executionOrder": "v1" }
+}
