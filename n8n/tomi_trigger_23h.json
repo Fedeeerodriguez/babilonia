@@ -9,7 +9,7 @@
       },
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [-400, 0],
+      "position": [-560, 0],
       "id": "trg-001",
       "name": "Cada 5 min"
     },
@@ -21,7 +21,7 @@
       },
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [-160, 0],
+      "position": [-320, 0],
       "id": "pg-cleanup-001",
       "name": "Limpiar locks viejos",
       "credentials": {
@@ -31,14 +31,29 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "WITH last_user AS (\n  SELECT DISTINCT ON (wa_id)\n         wa_id, sender_name, content, created_at\n  FROM messages\n  WHERE direction = 'cliente'\n  ORDER BY wa_id, created_at DESC\n),\ncandidates AS (\n  SELECT lu.*\n  FROM last_user lu\n  WHERE lu.created_at <= NOW() - INTERVAL '23 hours'\n    AND lu.created_at >  NOW() - INTERVAL '24 hours'\n    AND NOT EXISTS (\n      SELECT 1 FROM messages m\n      WHERE m.wa_id = lu.wa_id AND m.created_at > lu.created_at\n    )\n  LIMIT 20\n),\nlocked AS (\n  INSERT INTO tomi_locks (wa_id)\n  SELECT wa_id FROM candidates\n  ON CONFLICT (wa_id) DO NOTHING\n  RETURNING wa_id\n)\nSELECT c.wa_id,\n       c.sender_name,\n       c.content    AS last_user_message,\n       c.created_at AS user_at,\n       EXTRACT(EPOCH FROM (NOW() - c.created_at))::int AS waited_seconds\nFROM candidates c\nJOIN locked l USING (wa_id);",
+        "query": "WITH last_user AS (\n  SELECT DISTINCT ON (wa_id)\n         wa_id, sender_name, content, created_at\n  FROM messages\n  WHERE direction = 'cliente'\n  ORDER BY wa_id, created_at DESC\n)\nSELECT lu.wa_id,\n       lu.sender_name,\n       lu.content    AS last_user_message,\n       lu.created_at AS user_at,\n       EXTRACT(EPOCH FROM (NOW() - lu.created_at))::int AS waited_seconds\nFROM last_user lu\nWHERE lu.created_at <= NOW() - INTERVAL '23 hours'\n  AND lu.created_at >  NOW() - INTERVAL '24 hours'\n  AND NOT EXISTS (\n    SELECT 1 FROM messages m\n    WHERE m.wa_id = lu.wa_id AND m.created_at > lu.created_at\n  )\nLIMIT 20;",
         "options": {}
       },
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [80, 0],
-      "id": "pg-findlock-001",
-      "name": "Buscar y bloquear conversaciones",
+      "position": [-80, 0],
+      "id": "pg-find-001",
+      "name": "Buscar candidatos",
+      "credentials": {
+        "postgres": { "id": "REEMPLAZAR_POR_CREDENCIAL_SUPABASE", "name": "Supabase Postgres" }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH lock_attempt AS (\n  INSERT INTO tomi_locks (wa_id)\n  VALUES ('{{ $json.wa_id }}')\n  ON CONFLICT (wa_id) DO NOTHING\n  RETURNING wa_id\n)\nSELECT\n  '{{ $json.wa_id }}'::text                    AS wa_id,\n  '{{ $json.sender_name }}'::text              AS sender_name,\n  $msg${{ $json.last_user_message }}$msg$::text AS last_user_message,\n  '{{ $json.user_at }}'::timestamptz           AS user_at,\n  {{ $json.waited_seconds }}::int              AS waited_seconds\nFROM lock_attempt;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [160, 0],
+      "id": "pg-lock-001",
+      "name": "Lock + pass-through",
       "credentials": {
         "postgres": { "id": "REEMPLAZAR_POR_CREDENCIAL_SUPABASE", "name": "Supabase Postgres" }
       }
@@ -64,7 +79,7 @@
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [320, 0],
+      "position": [400, 0],
       "id": "http-tomi-001",
       "name": "Disparar Tomi"
     }
@@ -74,9 +89,12 @@
       "main": [[{ "node": "Limpiar locks viejos", "type": "main", "index": 0 }]]
     },
     "Limpiar locks viejos": {
-      "main": [[{ "node": "Buscar y bloquear conversaciones", "type": "main", "index": 0 }]]
+      "main": [[{ "node": "Buscar candidatos", "type": "main", "index": 0 }]]
     },
-    "Buscar y bloquear conversaciones": {
+    "Buscar candidatos": {
+      "main": [[{ "node": "Lock + pass-through", "type": "main", "index": 0 }]]
+    },
+    "Lock + pass-through": {
       "main": [[{ "node": "Disparar Tomi", "type": "main", "index": 0 }]]
     }
   },
