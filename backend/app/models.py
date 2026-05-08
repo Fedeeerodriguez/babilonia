@@ -8,6 +8,9 @@ from sqlalchemy import (
 )
 from app.database import Base
 
+# BigInteger autoincrement no funciona en SQLite — degradamos a Integer en ese dialecto.
+PK = BigInteger().with_variant(Integer(), "sqlite")
+
 
 class UserRole(str, Enum):
     admin = "admin"
@@ -36,7 +39,7 @@ class MessageDirection(str, Enum):
 class Message(Base):
     """Espejo de la tabla `messages` que escribe n8n. La API solo lee."""
     __tablename__ = "messages"
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    id = Column(PK, primary_key=True, autoincrement=True)
     wa_id = Column(String, nullable=False, index=True)
     sender_name = Column(String)
     operator_name = Column(String, index=True)
@@ -66,7 +69,7 @@ class DocumentMeta(Base):
 
 class AgentChatMessage(Base):
     __tablename__ = "agent_chats"
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    id = Column(PK, primary_key=True, autoincrement=True)
     user_id = Column(Uuid, ForeignKey("users.id"))
     role = Column(String, nullable=False)
     content = Column(Text)

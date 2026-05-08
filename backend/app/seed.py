@@ -9,16 +9,16 @@ Base.metadata.create_all(bind=engine)
 db = SessionLocal()
 
 # Admin
-if not db.query(models.User).filter(models.User.email == "admin@babilonia.local").first():
+if not db.query(models.User).filter(models.User.email == "admin@babilonia.com").first():
     db.add(models.User(
-        email="admin@babilonia.local",
+        email="admin@babilonia.com",
         password_hash=hash_password("babilonia123"),
         full_name="Admin Babilonia",
         role=models.UserRole.admin,
         operator_name="Admin",
     ))
     db.commit()
-    print("✓ admin@babilonia.local / babilonia123")
+    print("OK admin@babilonia.com / babilonia123")
 
 # Mensajes demo
 if db.query(models.Message).count() == 0:
@@ -46,7 +46,7 @@ if db.query(models.Message).count() == 0:
                         message_type="text", content=f"Respuesta del equipo #{k}", created_at=t,
                     ))
     db.commit()
-    print(f"✓ {db.query(models.Message).count()} mensajes demo")
+    print(f"OK {db.query(models.Message).count()} mensajes demo")
 
 db.close()
 print("seed ok")
