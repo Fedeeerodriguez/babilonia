@@ -2,64 +2,201 @@
   "name": "actualizacion contexto wati",
   "nodes": [
     {
-      "parameters": { "httpMethod": "POST", "path": "tommysupabase", "options": {} },
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "tommysupabase",
+        "options": {}
+      },
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2.1,
-      "position": [-288, 192],
+      "position": [
+        -64,
+        -48
+      ],
       "id": "42cc959e-8511-4ef0-b3ec-9f2d0320a625",
       "name": "Webhook",
       "webhookId": "d31576de-051b-4f8a-8040-08ca41fd1e7d"
     },
     {
       "parameters": {
-        "assignments": { "assignments": [
-          { "id": "f1",  "name": "nombre_cliente",   "value": "={{ $json.body.senderName ?? '' }}", "type": "string" },
-          { "id": "f2",  "name": "mensaje",          "value": "={{ $json.body.text }}",            "type": "string" },
-          { "id": "f3",  "name": "id_cliente",       "value": "={{ $json.body.waId }}",            "type": "string" },
-          { "id": "f4",  "name": "emisor",           "value": "={{ $json.body.owner ?? true }}",   "type": "boolean" },
-          { "id": "f5",  "name": "tipo_de_mensaje",  "value": "={{ $json.body.type }}",            "type": "string" },
-          { "id": "f6",  "name": "nombre_equipo",    "value": "={{ $json.body.operatorName ?? 'Sistema Automático' }}", "type": "string" },
-          { "id": "f7",  "name": "event_type",       "value": "={{ $json.body.eventType }}",       "type": "string" },
-          { "id": "f8",  "name": "template_name",    "value": "={{ $json.body.templateName ?? '' }}", "type": "string" },
-          { "id": "f9",  "name": "wati_message_id",  "value": "={{ $json.body.id ?? '' }}",        "type": "string" },
-          { "id": "f10", "name": "operator_email",   "value": "={{ $json.body.operatorEmail ?? '' }}", "type": "string" }
-        ] },
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f1",
+              "name": "nombre_cliente",
+              "value": "={{ $json.body.senderName ?? '' }}",
+              "type": "string"
+            },
+            {
+              "id": "f2",
+              "name": "mensaje",
+              "value": "={{ $json.body.text }}",
+              "type": "string"
+            },
+            {
+              "id": "f3",
+              "name": "id_cliente",
+              "value": "={{ $json.body.waId }}",
+              "type": "string"
+            },
+            {
+              "id": "f4",
+              "name": "emisor",
+              "value": "={{ $json.body.owner ?? true }}",
+              "type": "boolean"
+            },
+            {
+              "id": "f5",
+              "name": "tipo_de_mensaje",
+              "value": "={{ $json.body.type }}",
+              "type": "string"
+            },
+            {
+              "id": "f6",
+              "name": "nombre_equipo",
+              "value": "={{ $json.body.operatorName ?? 'Sistema Automático' }}",
+              "type": "string"
+            },
+            {
+              "id": "f7",
+              "name": "event_type",
+              "value": "={{ $json.body.eventType }}",
+              "type": "string"
+            },
+            {
+              "id": "f8",
+              "name": "template_name",
+              "value": "={{ $json.body.templateName ?? '' }}",
+              "type": "string"
+            },
+            {
+              "id": "f9",
+              "name": "wati_message_id",
+              "value": "={{ $json.body.id ?? '' }}",
+              "type": "string"
+            },
+            {
+              "id": "f10",
+              "name": "operator_email",
+              "value": "={{ $json.body.operatorEmail ?? '' }}",
+              "type": "string"
+            }
+          ]
+        },
         "options": {}
       },
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
-      "position": [-64, 192],
-      "id": "083d7b2e-b218-4833-bb83-bbdb9a0dfa22",
-      "name": "Edit Fields1"
+      "position": [
+        384,
+        -48
+      ],
+      "id": "f0bf1f0b-3b64-4669-bc02-7c878d7a385d",
+      "name": "Edit Fields"
     },
     {
       "parameters": {
-        "rules": { "values": [
-          { "conditions": { "options": { "caseSensitive": true, "typeValidation": "strict", "version": 3 },
-              "conditions": [
-                { "id": "c1", "leftValue": "={{ $json.tipo_de_mensaje }}", "rightValue": "text", "operator": { "type": "string", "operation": "equals" } },
-                { "id": "c2", "leftValue": "={{ $json.emisor }}", "rightValue": false, "operator": { "type": "boolean", "operation": "false" } }
-              ], "combinator": "and" },
-            "renameOutput": true, "outputKey": "cliente" },
-          { "conditions": { "options": { "caseSensitive": true, "typeValidation": "strict", "version": 3 },
-              "conditions": [
-                { "id": "c3", "leftValue": "={{ $json.tipo_de_mensaje }}", "rightValue": "text", "operator": { "type": "string", "operation": "equals" } },
-                { "id": "c4", "leftValue": "={{ $json.emisor }}", "rightValue": true,  "operator": { "type": "boolean", "operation": "true" } }
-              ], "combinator": "and" },
-            "renameOutput": true, "outputKey": "asesor" },
-          { "conditions": { "options": { "caseSensitive": true, "typeValidation": "strict", "version": 3 },
-              "conditions": [
-                { "id": "c5", "leftValue": "={{ $json.tipo_de_mensaje }}", "rightValue": "template", "operator": { "type": "string", "operation": "equals" } }
-              ], "combinator": "and" },
-            "renameOutput": true, "outputKey": "automatico" }
-        ] },
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "c1",
+                    "leftValue": "={{ $json.tipo_de_mensaje }}",
+                    "rightValue": "text",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  },
+                  {
+                    "id": "c2",
+                    "leftValue": "={{ $json.emisor }}",
+                    "rightValue": false,
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "false"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "cliente"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "c3",
+                    "leftValue": "={{ $json.tipo_de_mensaje }}",
+                    "rightValue": "text",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  },
+                  {
+                    "id": "c4",
+                    "leftValue": "={{ $json.emisor }}",
+                    "rightValue": true,
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "asesor"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "c5",
+                    "leftValue": "={{ $json.tipo_de_mensaje }}",
+                    "rightValue": "template",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "automatico"
+            }
+          ]
+        },
         "options": {}
       },
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3.4,
-      "position": [160, 176],
-      "id": "061db418-7eb4-4796-8e90-1882ce266dbc",
-      "name": "Tipo de mensaje"
+      "position": [
+        608,
+        -64
+      ],
+      "id": "d25d5ebf-cefd-43a9-ab2b-b53023d4d1b5",
+      "name": "Tipo de mensaje2"
     },
     {
       "parameters": {
@@ -69,10 +206,18 @@
       },
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [384, 0],
-      "id": "5c7f63ae-7707-45f7-a5f0-98301f83ff27",
-      "name": "Guardar mensaje cliente1",
-      "credentials": { "postgres": { "id": "YkAn096wtNJS3fPB", "name": "Postgres account" } }
+      "position": [
+        832,
+        -528
+      ],
+      "id": "93bb5811-e9ce-4603-9f76-95f180498ea6",
+      "name": "Guardar mensaje cliente",
+      "credentials": {
+        "postgres": {
+          "id": "YkAn096wtNJS3fPB",
+          "name": "Postgres account"
+        }
+      }
     },
     {
       "parameters": {
@@ -82,10 +227,18 @@
       },
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [384, 192],
-      "id": "efe567f5-6740-4906-9a3f-f4c2b7d5dfb0",
-      "name": "Guardar mensaje asesor1",
-      "credentials": { "postgres": { "id": "YkAn096wtNJS3fPB", "name": "Postgres account" } }
+      "position": [
+        832,
+        -144
+      ],
+      "id": "d4008b18-9dd4-4656-b9ec-77ddca29760a",
+      "name": "Guardar mensaje asesor",
+      "credentials": {
+        "postgres": {
+          "id": "YkAn096wtNJS3fPB",
+          "name": "Postgres account"
+        }
+      }
     },
     {
       "parameters": {
@@ -95,10 +248,18 @@
       },
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [384, 384],
-      "id": "10a2ebeb-c638-4e16-8232-5965ba484da9",
-      "name": "Guardar mensaje automático",
-      "credentials": { "postgres": { "id": "YkAn096wtNJS3fPB", "name": "Postgres account" } }
+      "position": [
+        832,
+        240
+      ],
+      "id": "b8017c76-6f9b-49d4-bdbe-615e6eeea29e",
+      "name": "Guardar mensaje automático1",
+      "credentials": {
+        "postgres": {
+          "id": "YkAn096wtNJS3fPB",
+          "name": "Postgres account"
+        }
+      }
     },
     {
       "parameters": {
@@ -108,10 +269,18 @@
       },
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [624, 0],
-      "id": "msg-cliente-001",
-      "name": "messages: cliente",
-      "credentials": { "postgres": { "id": "YkAn096wtNJS3fPB", "name": "Postgres account" } }
+      "position": [
+        832,
+        -336
+      ],
+      "id": "ba6e3f95-cb4c-423d-bcc8-75bddffbbfd7",
+      "name": "messages: cliente1",
+      "credentials": {
+        "postgres": {
+          "id": "YkAn096wtNJS3fPB",
+          "name": "Postgres account"
+        }
+      }
     },
     {
       "parameters": {
@@ -121,10 +290,18 @@
       },
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [624, 192],
-      "id": "msg-asesor-001",
-      "name": "messages: asesor",
-      "credentials": { "postgres": { "id": "YkAn096wtNJS3fPB", "name": "Postgres account" } }
+      "position": [
+        832,
+        48
+      ],
+      "id": "95e585fa-834e-4d1e-9aa1-76dec47107b9",
+      "name": "messages: asesor1",
+      "credentials": {
+        "postgres": {
+          "id": "YkAn096wtNJS3fPB",
+          "name": "Postgres account"
+        }
+      }
     },
     {
       "parameters": {
@@ -134,21 +311,203 @@
       },
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [624, 384],
-      "id": "msg-template-001",
-      "name": "messages: template",
-      "credentials": { "postgres": { "id": "YkAn096wtNJS3fPB", "name": "Postgres account" } }
+      "position": [
+        832,
+        432
+      ],
+      "id": "f0c25cce-a178-4a26-9f0f-14a95e02dce9",
+      "name": "messages: template1",
+      "credentials": {
+        "postgres": {
+          "id": "YkAn096wtNJS3fPB",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "3cba2c49-eec5-441d-9bf5-cf889647aeb8",
+              "leftValue": "={{ $json.body.operatorEmail }}",
+              "rightValue": "admin@babilonia.ai",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        160,
+        -48
+      ],
+      "id": "5f7640b9-7743-404f-9907-eaa4aca6cd79",
+      "name": "If"
     }
   ],
+  "pinData": {
+    "Webhook": [
+      {
+        "json": {
+          "headers": {
+            "host": "n8n.babilonia.ai",
+            "user-agent": "Wati-webhook/1.0 (https://wati.io; support@wati.io)",
+            "content-length": "789",
+            "content-type": "application/json; charset=utf-8",
+            "traceparent": "00-14abb900d25dc107fac918d7b9af3ca2-2ca425d61c7b787c-00",
+            "tracestate": "dd=s:0;p:2ca425d61c7b787c",
+            "x-datadog-parent-id": "3216737635380459644",
+            "x-datadog-sampling-priority": "0",
+            "x-datadog-tags": "_dd.p.tid=14abb900d25dc107",
+            "x-datadog-trace-id": "18071002294613130402",
+            "x-forwarded-for": "136.110.53.100",
+            "x-forwarded-host": "n8n.babilonia.ai",
+            "x-forwarded-port": "443",
+            "x-forwarded-proto": "https",
+            "x-forwarded-server": "1b15f7be5131",
+            "x-real-ip": "136.110.53.100",
+            "accept-encoding": "gzip"
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "id": "69fe5840fa777b9b7eeb8d17",
+            "created": "2026-05-08T21:40:16.4973073Z",
+            "whatsappMessageId": "wamid.HBgNNTQ5Mjk1NDQwNzA5NhUCABIYFjNFQjA5QTQ5QzQzMUMzOTRFODcwRDQA",
+            "conversationId": "69fe4b7ede8fa194607feca4",
+            "ticketId": "69fe4b7e543a836e7fc28657",
+            "text": "Rodriguezfederico765@gmail.com",
+            "type": "text",
+            "data": null,
+            "sourceId": null,
+            "sourceUrl": null,
+            "timestamp": "1778276415",
+            "owner": false,
+            "eventType": "message",
+            "statusString": "SENT",
+            "avatarUrl": null,
+            "assignedId": "686b36505f7a7c5e558b805d",
+            "operatorName": "Jimena Barrera",
+            "operatorEmail": "jimenabarrerah@gmail.com",
+            "waId": "5492954407096",
+            "messageContact": null,
+            "senderName": "Fede Rodriguez🇦🇷",
+            "listReply": null,
+            "interactiveButtonReply": null,
+            "buttonReply": null,
+            "replyContextId": "",
+            "sourceType": 7,
+            "frequentlyForwarded": false,
+            "forwarded": false
+          },
+          "webhookUrl": "https://n8n.babilonia.ai/webhook/tommysupabase",
+          "executionMode": "production"
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
   "connections": {
-    "Webhook":         { "main": [[{ "node": "Edit Fields1", "type": "main", "index": 0 }]] },
-    "Edit Fields1":    { "main": [[{ "node": "Tipo de mensaje", "type": "main", "index": 0 }]] },
-    "Tipo de mensaje": { "main": [
-      [{ "node": "Guardar mensaje cliente1",   "type": "main", "index": 0 }, { "node": "messages: cliente",  "type": "main", "index": 0 }],
-      [{ "node": "Guardar mensaje asesor1",    "type": "main", "index": 0 }, { "node": "messages: asesor",   "type": "main", "index": 0 }],
-      [{ "node": "Guardar mensaje automático", "type": "main", "index": 0 }, { "node": "messages: template", "type": "main", "index": 0 }]
-    ] }
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Tipo de mensaje2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tipo de mensaje2": {
+      "main": [
+        [
+          {
+            "node": "Guardar mensaje cliente",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "messages: cliente1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Guardar mensaje asesor",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "messages: asesor1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Guardar mensaje automático1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "messages: template1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
   "active": true,
-  "settings": { "executionOrder": "v1" }
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "32ac1533-6607-4418-b234-e654b63bfc2f",
+  "meta": {
+    "instanceId": "35465ac346de6358512a3a78ea5cd41783678bf62b45422c84dc42d2e28a6400"
+  },
+  "id": "ipKBDvEhbtJuZ47l",
+  "tags": []
 }
