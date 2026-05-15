@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 
 from app.services.tomi import notion_client as nc
 from app.services.tomi import bases_datos as bd
+from app.services.tomi import agente as ag
 
 router = APIRouter(prefix="/api/tomi", tags=["tomi"])
 
@@ -149,6 +150,32 @@ def bases_datos(body: BasesDatosIn, x_tomi_key: Optional[str] = Header(default=N
         clientes=body.clientes,
         asesores=body.asesores,
         incluir=body.incluir,
+    )
+
+
+# ---------- Agente LLM (tool calling sobre bases_datos) ----------
+
+class HistMsg(BaseModel):
+    role: str
+    content: str
+
+
+class AgenteIn(BaseModel):
+    mensaje: str
+    historial: Optional[List[HistMsg]] = None
+    wa_id: Optional[str] = None
+    max_iter: int = 5
+
+
+@router.post("/agente")
+def agente_llm(body: AgenteIn, x_tomi_key: Optional[str] = Header(default=None)):
+    _auth(x_tomi_key)
+    hist = [{"role": h.role, "content": h.content} for h in (body.historial or [])]
+    return ag.responder(
+        mensaje=body.mensaje,
+        historial=hist,
+        wa_id=body.wa_id,
+        max_iter=body.max_iter,
     )
 
 
