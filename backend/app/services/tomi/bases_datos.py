@@ -185,7 +185,87 @@ def consultar(
             log.error("calendly falló: %s", e)
             results["calendly"] = []
 
-    # 4. Resolver relations -> {id, name, url} en cada categoría
+    # 4. EXPANSIÓN de entidades principales: si el usuario es asesor o cliente,
+    # traer datos completos (correo + nombre) de sus relaciones clave SIN cap.
+    expansiones: Dict[str, Dict[str, Any]] = {}
+    if results.get("usuarios"):
+        for email_k, u in results["usuarios"].items():
+            if not isinstance(u, dict) or u.get("tipo") == "prospecto":
+                continue
+            data = u.get("data") or {}
+            tipo = u.get("tipo")
+            exp: Dict[str, Any] = {}
+
+            if tipo == "asesor":
+                # Todos sus clientes (Clientes General), eventos Calendly y DAFs
+                ids_clientes = [v for v in (data.get("Clientes General") or []) if isinstance(v, str)]
+                if ids_clientes:
+                    clientes_full = nc.expandir_ids_full(
+                        ids_clientes,
+                        extract_props=["_id", "_url", "Nombre del Cliente", "Correo", "Teléfono", "Asesor"],
+                        max_ids=200,
+                    )
+                    exp["clientes"] = [{
+                        "nombre": c.get("Nombre del Cliente"),
+                        "correo": c.get("Correo"),
+                        "telefono": c.get("Teléfono"),
+                        "url": c.get("_url"),
+                        "id": c.get("_id"),
+                    } for c in clientes_full]
+                    exp["total_clientes"] = len(exp["clientes"])
+
+                ids_eventos = [v for v in (data.get("Eventos Calendly") or []) if isinstance(v, str)]
+                if ids_eventos:
+                    eventos_full = nc.expandir_ids_full(
+                        ids_eventos,
+                        extract_props=["_id", "_url", "Evento ", "Nombre del invitado", "Correo invitado", "Fecha de Evento", "Estado"],
+                        max_ids=100,
+                    )
+                    exp["eventos_calendly"] = eventos_full
+                    exp["total_eventos"] = len(eventos_full)
+                queries_count += 1  # aproximado
+
+            elif tipo == "cliente":
+                # Su asesor, sus emisiones, sus tickets, sus eventos
+                ids_asesor = [v for v in (data.get("Asesor") or data.get("CRM Asesores") or []) if isinstance(v, str)]
+                if ids_asesor:
+                    ases_full = nc.expandir_ids_full(
+                        ids_asesor,
+                        extract_props=["_id", "_url", "Nombre Completo", "Correo", "Teléfono"],
+                        max_ids=5,
+                    )
+                    exp["asesor"] = ases_full[0] if ases_full else None
+
+                ids_emis = [v for v in (data.get("Emisiones") or []) if isinstance(v, str)]
+                if ids_emis:
+                    exp["emisiones"] = nc.expandir_ids_full(
+                        ids_emis,
+                        extract_props=["_id", "_url", "Solicitud", "Número de Póliza", "Nombre Cliente", "Prima", "Estado", "Fecha de Emisión"],
+                        max_ids=50,
+                    )
+                    exp["total_emisiones"] = len(exp["emisiones"])
+
+                ids_tk = [v for v in (data.get("Tickets Allianz") or []) if isinstance(v, str)]
+                if ids_tk:
+                    exp["tickets_allianz"] = nc.expandir_ids_full(
+                        ids_tk,
+                        extract_props=["_id", "_url", "Nombre del Trámite", "Tipo de Trámite", "Estado", "Fecha de Solicitud"],
+                        max_ids=30,
+                    )
+
+                ids_cal = [v for v in (data.get("Eventos Calendly") or []) if isinstance(v, str)]
+                if ids_cal:
+                    exp["eventos_calendly"] = nc.expandir_ids_full(
+                        ids_cal,
+                        extract_props=["_id", "_url", "Evento ", "Fecha de Evento", "Estado"],
+                        max_ids=20,
+                    )
+                queries_count += 1
+
+            if exp:
+                expansiones[email_k] = exp
+
+    # 5. Resolver relations -> {id, name, url} en cada categoría (cap normal)
     RELATIONS_BY_TYPE: Dict[str, List[str]] = {
         "emisiones": ["Asesor", "Cerrador", "Clientes General", "Cobranza", "Tickets Allianz", "Lanzamientos", "Producto"],
         "cobranzas": ["Asesores ", "Cerradores", "Líderes", "Emisiones"],
@@ -245,6 +325,12 @@ def consultar(
         if isinstance(p, str):
             pols_encontradas.add(p.strip())
     no_polizas = [p for p in polizas_uniq if not any(p in pe for pe in pols_encontradas)]
+
+    # Adjuntar expansiones a cada usuario
+    for u in usuarios:
+        exp = expansiones.get(u["email"])
+        if exp:
+            u["expandido"] = exp
 
     elapsed = int((time.time() - t0) * 1000)
     return {

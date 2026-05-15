@@ -126,6 +126,43 @@ def _resolve_page_id(page_id: str) -> Dict[str, Any]:
         return {"id": page_id, "name": None, "url": None}
 
 
+def _resolve_page_full(page_id: str, extract_props: Optional[List[str]] = None) -> Dict[str, Any]:
+    """Devuelve la page completamente flattened + props seleccionadas si se piden."""
+    try:
+        page = _client().pages.retrieve(page_id=page_id)
+        flat = _flatten_props(page)
+        if extract_props:
+            flat = {k: v for k, v in flat.items() if k in extract_props or k.startswith("_")}
+        return flat
+    except Exception as e:
+        log.debug("resolve_page_full falló id=%s: %s", page_id, e)
+        return {"_id": page_id, "name": None}
+
+
+def expandir_ids_full(
+    ids: List[str],
+    extract_props: Optional[List[str]] = None,
+    max_ids: int = 100,
+    max_workers: int = 15,
+) -> List[Dict[str, Any]]:
+    """Resuelve N IDs en paralelo con datos completos (subset de props si se pide)."""
+    ids = [v for v in (ids or []) if isinstance(v, str) and len(v) >= 32]
+    if not ids:
+        return []
+    ids = ids[:max_ids]
+    from concurrent.futures import ThreadPoolExecutor
+    out: List[Dict[str, Any]] = [None] * len(ids)  # type: ignore
+    with ThreadPoolExecutor(max_workers=max_workers) as ex:
+        futs = {ex.submit(_resolve_page_full, pid, extract_props): i for i, pid in enumerate(ids)}
+        for fut in futs:
+            i = futs[fut]
+            try:
+                out[i] = fut.result(timeout=15)
+            except Exception:
+                out[i] = {"_id": ids[i], "name": None}
+    return [r for r in out if r]
+
+
 def resolver_relaciones(
     rows: List[Dict[str, Any]],
     relations: List[str],
