@@ -147,3 +147,33 @@ def bases_datos(body: BasesDatosIn, x_tomi_key: Optional[str] = Header(default=N
         clientes=body.clientes,
         incluir=body.incluir,
     )
+
+
+# ---------- Debug: ver schema de una DB Notion ----------
+
+@router.get("/debug/schema/{db_name}")
+def debug_schema(db_name: str, x_tomi_key: Optional[str] = Header(default=None)):
+    """Devuelve {property_name: type} de la DB indicada + 1 page de ejemplo aplanada."""
+    _auth(x_tomi_key)
+    db_map = {
+        "asesores": nc.DB_ASESORES,
+        "estudiantes": nc.DB_ESTUDIANTES,
+        "clientes": nc.DB_CLIENTES,
+        "emisiones": nc.DB_EMISIONES,
+        "cobranzas": nc.DB_COBRANZAS,
+        "tickets_allianz": nc.DB_TICKETS_ALLIANZ,
+        "tickets_babilonia": nc.DB_TICKETS_BABILONIA,
+        "calendly": nc.DB_EVENTOS_CALENDLY,
+    }
+    db_id = db_map.get(db_name)
+    if not db_id:
+        raise HTTPException(404, f"db {db_name} no encontrada. Opciones: {list(db_map.keys())}")
+    try:
+        client = nc._client()
+        meta = client.databases.retrieve(database_id=db_id)
+        props = {k: v.get("type") for k, v in (meta.get("properties") or {}).items()}
+        sample = client.databases.query(database_id=db_id, page_size=1)
+        ejemplo = nc._flatten_props(sample["results"][0]) if sample.get("results") else None
+        return {"db_id": db_id, "properties": props, "ejemplo": ejemplo}
+    except Exception as e:
+        raise HTTPException(500, f"error: {e}")
