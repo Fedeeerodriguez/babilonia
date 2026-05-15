@@ -127,8 +127,8 @@ def consultar(
         if "usuarios" in incluir_set and emails_uniq:
             submit(ex, "usuarios", nc.clasificar_usuarios_batch, emails_uniq)
             queries_count += 2  # son 3 totales (asesor/estud/cliente)
-        if "emisiones" in incluir_set and (polizas_uniq or clientes_uniq):
-            submit(ex, "emisiones", nc.buscar_emisiones_batch, polizas_uniq, clientes_uniq)
+        if "emisiones" in incluir_set and (polizas_uniq or clientes_uniq or emails_uniq):
+            submit(ex, "emisiones", nc.buscar_emisiones_batch, polizas_uniq, clientes_uniq, emails_uniq)
         if "cobranzas" in incluir_set and polizas_uniq:
             submit(ex, "cobranzas", nc.buscar_cobranzas_batch, polizas_uniq)
         if "tickets_allianz" in incluir_set:

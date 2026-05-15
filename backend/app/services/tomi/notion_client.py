@@ -161,13 +161,11 @@ def buscar_emisiones(
     cliente: Optional[str] = None,
     poliza: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
-    # NOTA: Esta DB requiere que la integración esté compartida. Los nombres
-    # de propiedad pueden variar — ajustar cuando esté accesible.
     conds: List[Dict[str, Any]] = []
     if cliente:
-        conds.append({"property": "Cliente", "title": {"contains": cliente}})
+        conds.append({"property": "Nombre Cliente", "rich_text": {"contains": cliente}})
     if poliza:
-        conds.append({"property": "Póliza", "title": {"contains": poliza}})
+        conds.append({"property": "Número de Póliza", "rich_text": {"contains": poliza}})
     if not conds:
         return []
     filt = conds[0] if len(conds) == 1 else {"and": conds}
@@ -189,15 +187,22 @@ def _or_contains(prop: str, ptype: str, values: List[str]) -> Optional[Dict[str,
 def buscar_emisiones_batch(
     polizas: Optional[List[str]] = None,
     clientes: Optional[List[str]] = None,
+    emails: Optional[List[str]] = None,
     page_size: int = 100,
 ) -> List[Dict[str, Any]]:
     polizas = [p for p in (polizas or []) if p]
     clientes = [c for c in (clientes or []) if c]
-    if not polizas and not clientes:
+    emails = [e for e in (emails or []) if e and "@" in e]
+    if not polizas and not clientes and not emails:
         return []
     or_conds: List[Dict[str, Any]] = []
-    or_conds += [{"property": "Póliza", "title": {"contains": p}} for p in polizas]
-    or_conds += [{"property": "Cliente", "title": {"contains": c}} for c in clientes]
+    or_conds += [{"property": "Número de Póliza", "rich_text": {"contains": p}} for p in polizas]
+    or_conds += [{"property": "Nombre Cliente", "rich_text": {"contains": c}} for c in clientes]
+    # buscar por email del cliente, asesor o cerrador
+    for e in emails:
+        or_conds.append({"property": "Correo Cliente", "rich_text": {"contains": e}})
+        or_conds.append({"property": "Correo Asesor", "rich_text": {"contains": e}})
+        or_conds.append({"property": "Correo Cerrador", "rich_text": {"contains": e}})
     filt = or_conds[0] if len(or_conds) == 1 else {"or": or_conds}
     return _query(DB_EMISIONES, filt, page_size=page_size)
 
