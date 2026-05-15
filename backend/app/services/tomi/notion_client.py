@@ -129,23 +129,38 @@ def _resolve_page_id(page_id: str) -> Dict[str, Any]:
 def resolver_relaciones(
     rows: List[Dict[str, Any]],
     relations: List[str],
-    max_workers: int = 10,
+    max_workers: int = 15,
+    max_ids_total: int = 80,
+    max_per_relation_per_row: int = 5,
 ) -> List[Dict[str, Any]]:
     """In-place: reemplaza los IDs de las relations indicadas por {id, name, url}.
 
     Eficiente: junta todos los IDs únicos de todas las rows, los resuelve en paralelo
     una sola vez, y rellena. Ignora props inexistentes.
+
+    Limita:
+      - max_per_relation_per_row: por row, solo resuelve los primeros N IDs de cada relation
+        (los demás quedan como string ID — el LLM ya tiene los principales).
+      - max_ids_total: cap absoluto en cantidad de page fetches (protege latencia).
     """
     if not rows:
         return rows
     all_ids: set = set()
+    truncated: Dict[id, Dict[str, int]] = {}  # row_idx -> {prop: cant_truncada}
     for row in rows:
         for prop in relations:
             ids = row.get(prop)
             if isinstance(ids, list):
-                for v in ids:
+                head = ids[:max_per_relation_per_row]
+                for v in head:
                     if isinstance(v, str) and len(v) >= 32:
                         all_ids.add(v)
+                        if len(all_ids) >= max_ids_total:
+                            break
+            if len(all_ids) >= max_ids_total:
+                break
+        if len(all_ids) >= max_ids_total:
+            break
     if not all_ids:
         return rows
     from concurrent.futures import ThreadPoolExecutor
@@ -155,14 +170,21 @@ def resolver_relaciones(
         for fut in futs:
             pid = futs[fut]
             try:
-                cache[pid] = fut.result(timeout=20)
+                cache[pid] = fut.result(timeout=15)
             except Exception:
                 cache[pid] = {"id": pid, "name": None, "url": None}
     for row in rows:
         for prop in relations:
             ids = row.get(prop)
             if isinstance(ids, list):
-                row[prop] = [cache.get(v, {"id": v, "name": None, "url": None}) if isinstance(v, str) and len(v) >= 32 else v for v in ids]
+                row[prop] = [
+                    cache.get(v, {"id": v, "name": None, "url": None})
+                    if isinstance(v, str) and len(v) >= 32 and v in cache
+                    else (v if isinstance(v, dict) else {"id": v, "name": None, "url": None})
+                    for v in ids[:max_per_relation_per_row]
+                ]
+                if len(ids) > max_per_relation_per_row:
+                    row[f"_{prop}_total"] = len(ids)
     return rows
 
 

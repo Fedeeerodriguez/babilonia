@@ -24,15 +24,15 @@ RX_POLIZA = re.compile(r"\b[A-Za-z][A-Za-z0-9]*-\d{3,}\b")
 
 # Nombres precedidos por marcador semántico — conservador para evitar falsos positivos.
 # Captura 1-3 palabras capitalizadas (incluye acentos/ñ) tras "cliente|asesor|asesora|de|para|del|señor|señora".
+# Inline flag (?i:...) hace case-insensitive SOLO el marcador, manteniendo el name
+# strict uppercase para evitar capturar "la asesora Jimena con sus" como nombre.
 RX_NOMBRE_CLIENTE = re.compile(
-    r"(?:cliente|sr|sra|señor|señora|para|del?)\s+"
-    r"([A-ZÁÉÍÓÚÑ][a-zá-úñ]+(?:\s+[A-ZÁÉÍÓÚÑ][a-zá-úñ]+){0,2})",
-    re.IGNORECASE,
+    r"(?i:\bcliente|\bsr|\bsra|\bseñor|\bseñora|\bpara|\bdel?)\b\s+"
+    r"([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){0,2})"
 )
 RX_NOMBRE_ASESOR = re.compile(
-    r"(?:asesor|asesora)\s+"
-    r"([A-ZÁÉÍÓÚÑ][a-zá-úñ]+(?:\s+[A-ZÁÉÍÓÚÑ][a-zá-úñ]+){0,2})",
-    re.IGNORECASE,
+    r"(?i:\basesor|\basesora)\b\s+"
+    r"([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){0,2})"
 )
 
 KEYWORDS_TICKETS = (
