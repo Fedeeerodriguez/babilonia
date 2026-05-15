@@ -11,10 +11,14 @@ from __future__ import annotations
 import os
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 
+from app.database import get_db
 from app.services.tomi import notion_client as nc
+from app.services.tomi import memorias as mem
+from app.services.tomi import historial as hist
 
 router = APIRouter(prefix="/api/tomi", tags=["tomi"])
 
@@ -120,3 +124,69 @@ def tickets_babilonia(body: TicketsBabiloniaIn, x_tomi_key: Optional[str] = Head
 def calendly(body: CalendlyIn, x_tomi_key: Optional[str] = Header(default=None)):
     _auth(x_tomi_key)
     return {"results": nc.buscar_eventos_calendly(cliente=body.cliente, limit=body.limit)}
+
+
+# ---------- Memorias (vector store Supabase) ----------
+
+class MemoriasIn(BaseModel):
+    query: str
+    categoria: Optional[str] = None
+    wa_id: Optional[str] = None
+    source: Optional[str] = None
+    k: int = 4
+
+
+@router.post("/memorias")
+def memorias(
+    body: MemoriasIn,
+    db: Session = Depends(get_db),
+    x_tomi_key: Optional[str] = Header(default=None),
+):
+    _auth(x_tomi_key)
+    return {"results": mem.buscar_memorias(
+        db, query=body.query, categoria=body.categoria,
+        wa_id=body.wa_id, source=body.source, k=body.k,
+    )}
+
+
+# ---------- Historial WATI ----------
+
+class HumanoIn(BaseModel):
+    wa_id: str
+    hours: int = 23
+
+
+class HistorialIn(BaseModel):
+    wa_id: str
+    limit: int = 10
+
+
+@router.post("/humano-reciente")
+def humano_reciente(
+    body: HumanoIn,
+    db: Session = Depends(get_db),
+    x_tomi_key: Optional[str] = Header(default=None),
+):
+    _auth(x_tomi_key)
+    return hist.humano_respondio_recientemente(db, wa_id=body.wa_id, hours=body.hours)
+
+
+@router.post("/historial")
+def historial(
+    body: HistorialIn,
+    db: Session = Depends(get_db),
+    x_tomi_key: Optional[str] = Header(default=None),
+):
+    _auth(x_tomi_key)
+    return {"results": hist.ultimos_mensajes(db, wa_id=body.wa_id, limit=body.limit)}
+
+
+@router.post("/correo-en-historial")
+def correo_en_historial(
+    body: HistorialIn,
+    db: Session = Depends(get_db),
+    x_tomi_key: Optional[str] = Header(default=None),
+):
+    _auth(x_tomi_key)
+    email = hist.buscar_correo_en_historial(db, wa_id=body.wa_id, lookback=body.limit)
+    return {"email": email}
