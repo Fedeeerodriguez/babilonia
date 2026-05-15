@@ -196,71 +196,82 @@ def consultar(
             tipo = u.get("tipo")
             exp: Dict[str, Any] = {}
 
-            if tipo == "asesor":
-                # Todos sus clientes (Clientes General), eventos Calendly y DAFs
-                ids_clientes = [v for v in (data.get("Clientes General") or []) if isinstance(v, str)]
-                if ids_clientes:
-                    clientes_full = nc.expandir_ids_full(
-                        ids_clientes,
-                        extract_props=["_id", "_url", "Nombre del Cliente", "Correo", "Teléfono", "Asesor"],
-                        max_ids=200,
-                    )
+            uid = data.get("_id")
+            if tipo == "asesor" and uid:
+                # 1 query por categoría (filtro por relation) en vez de N pages.retrieve
+                try:
+                    clientes_rows = nc.clientes_de_asesor(uid)
+                    queries_count += 1
                     exp["clientes"] = [{
                         "nombre": c.get("Nombre del Cliente"),
                         "correo": c.get("Correo"),
                         "telefono": c.get("Teléfono"),
                         "url": c.get("_url"),
                         "id": c.get("_id"),
-                    } for c in clientes_full]
+                    } for c in clientes_rows]
                     exp["total_clientes"] = len(exp["clientes"])
+                except Exception as e:
+                    log.error("clientes_de_asesor falló: %s", e)
+                try:
+                    eventos = nc.eventos_calendly_de_asesor(uid)
+                    queries_count += 1
+                    exp["eventos_calendly"] = [{
+                        "evento": e_.get("Evento ") or e_.get("Tipo de Evento"),
+                        "fecha": (e_.get("Fecha de Evento") or {}).get("start"),
+                        "invitado": e_.get("Nombre del invitado"),
+                        "correo_invitado": e_.get("Correo invitado"),
+                        "estado": e_.get("Estado"),
+                        "url": e_.get("_url"),
+                    } for e_ in eventos]
+                    exp["total_eventos"] = len(exp["eventos_calendly"])
+                except Exception as e:
+                    log.error("eventos_de_asesor falló: %s", e)
+                try:
+                    emis = nc.emisiones_de_asesor(uid)
+                    queries_count += 1
+                    exp["emisiones"] = [{
+                        "solicitud": e_.get("Solicitud"),
+                        "poliza": e_.get("Número de Póliza"),
+                        "cliente": e_.get("Nombre Cliente"),
+                        "correo_cliente": e_.get("Correo Cliente"),
+                        "prima": e_.get("Prima"),
+                        "estado": e_.get("Estado"),
+                        "url": e_.get("_url"),
+                    } for e_ in emis]
+                    exp["total_emisiones"] = len(exp["emisiones"])
+                except Exception as e:
+                    log.error("emisiones_de_asesor falló: %s", e)
 
-                ids_eventos = [v for v in (data.get("Eventos Calendly") or []) if isinstance(v, str)]
-                if ids_eventos:
-                    eventos_full = nc.expandir_ids_full(
-                        ids_eventos,
-                        extract_props=["_id", "_url", "Evento ", "Nombre del invitado", "Correo invitado", "Fecha de Evento", "Estado"],
-                        max_ids=100,
-                    )
-                    exp["eventos_calendly"] = eventos_full
-                    exp["total_eventos"] = len(eventos_full)
-                queries_count += 1  # aproximado
-
-            elif tipo == "cliente":
-                # Su asesor, sus emisiones, sus tickets, sus eventos
+            elif tipo == "cliente" and uid:
+                # Su asesor: usar pages.retrieve sobre el ID de relation
                 ids_asesor = [v for v in (data.get("Asesor") or data.get("CRM Asesores") or []) if isinstance(v, str)]
                 if ids_asesor:
-                    ases_full = nc.expandir_ids_full(
-                        ids_asesor,
-                        extract_props=["_id", "_url", "Nombre Completo", "Correo", "Teléfono"],
-                        max_ids=5,
-                    )
-                    exp["asesor"] = ases_full[0] if ases_full else None
-
-                ids_emis = [v for v in (data.get("Emisiones") or []) if isinstance(v, str)]
-                if ids_emis:
-                    exp["emisiones"] = nc.expandir_ids_full(
-                        ids_emis,
-                        extract_props=["_id", "_url", "Solicitud", "Número de Póliza", "Nombre Cliente", "Prima", "Estado", "Fecha de Emisión"],
-                        max_ids=50,
-                    )
+                    try:
+                        ases_full = nc.expandir_ids_full(
+                            ids_asesor,
+                            extract_props=["_id", "_url", "Nombre Completo", "Correo", "Teléfono"],
+                            max_ids=3,
+                            max_workers=3,
+                        )
+                        exp["asesor"] = ases_full[0] if ases_full else None
+                        queries_count += len(ases_full)
+                    except Exception as e:
+                        log.error("expandir asesor falló: %s", e)
+                # Emisiones del cliente: 1 query por relation
+                try:
+                    emis = nc.emisiones_de_cliente(uid)
+                    queries_count += 1
+                    exp["emisiones"] = [{
+                        "solicitud": e_.get("Solicitud"),
+                        "poliza": e_.get("Número de Póliza"),
+                        "prima": e_.get("Prima"),
+                        "estado": e_.get("Estado"),
+                        "fecha_emision": (e_.get("Fecha de Emisión") or {}).get("start"),
+                        "url": e_.get("_url"),
+                    } for e_ in emis]
                     exp["total_emisiones"] = len(exp["emisiones"])
-
-                ids_tk = [v for v in (data.get("Tickets Allianz") or []) if isinstance(v, str)]
-                if ids_tk:
-                    exp["tickets_allianz"] = nc.expandir_ids_full(
-                        ids_tk,
-                        extract_props=["_id", "_url", "Nombre del Trámite", "Tipo de Trámite", "Estado", "Fecha de Solicitud"],
-                        max_ids=30,
-                    )
-
-                ids_cal = [v for v in (data.get("Eventos Calendly") or []) if isinstance(v, str)]
-                if ids_cal:
-                    exp["eventos_calendly"] = nc.expandir_ids_full(
-                        ids_cal,
-                        extract_props=["_id", "_url", "Evento ", "Fecha de Evento", "Estado"],
-                        max_ids=20,
-                    )
-                queries_count += 1
+                except Exception as e:
+                    log.error("emisiones_de_cliente falló: %s", e)
 
             if exp:
                 expansiones[email_k] = exp

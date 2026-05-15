@@ -42,6 +42,29 @@ def _client() -> Client:
     return Client(auth=NOTION_TOKEN, log_level=logging.WARNING)
 
 
+def _retry_429(fn, *args, max_attempts: int = 4, **kwargs):
+    """Wrapper con backoff exponencial ante rate-limit de Notion (429)."""
+    import time as _t
+    delay = 1.0
+    for attempt in range(max_attempts):
+        try:
+            return fn(*args, **kwargs)
+        except APIResponseError as e:
+            if getattr(e, "status", None) == 429 or "rate" in str(e).lower():
+                log.warning("Notion 429 — retry %d/%d en %.1fs", attempt + 1, max_attempts, delay)
+                _t.sleep(delay)
+                delay *= 2
+                continue
+            raise
+        except Exception as e:
+            if "rate" in str(e).lower() or "429" in str(e):
+                _t.sleep(delay)
+                delay *= 2
+                continue
+            raise
+    return fn(*args, **kwargs)  # último intento sin catch
+
+
 def _flatten_props(page: Dict[str, Any]) -> Dict[str, Any]:
     """Aplana las propiedades de una page de Notion a un dict simple."""
     out: Dict[str, Any] = {"_id": page.get("id"), "_url": page.get("url")}
@@ -113,9 +136,9 @@ def _page_title(page: Dict[str, Any]) -> Optional[str]:
 
 
 def _resolve_page_id(page_id: str) -> Dict[str, Any]:
-    """Devuelve {id, name, url} de una page por ID. Cache simple en proc."""
+    """Devuelve {id, name, url} de una page por ID. Con retry 429."""
     try:
-        page = _client().pages.retrieve(page_id=page_id)
+        page = _retry_429(_client().pages.retrieve, page_id=page_id)
         return {
             "id": page_id,
             "name": _page_title(page),
@@ -129,7 +152,7 @@ def _resolve_page_id(page_id: str) -> Dict[str, Any]:
 def _resolve_page_full(page_id: str, extract_props: Optional[List[str]] = None) -> Dict[str, Any]:
     """Devuelve la page completamente flattened + props seleccionadas si se piden."""
     try:
-        page = _client().pages.retrieve(page_id=page_id)
+        page = _retry_429(_client().pages.retrieve, page_id=page_id)
         flat = _flatten_props(page)
         if extract_props:
             flat = {k: v for k, v in flat.items() if k in extract_props or k.startswith("_")}
@@ -166,9 +189,9 @@ def expandir_ids_full(
 def resolver_relaciones(
     rows: List[Dict[str, Any]],
     relations: List[str],
-    max_workers: int = 15,
-    max_ids_total: int = 80,
-    max_per_relation_per_row: int = 5,
+    max_workers: int = 4,
+    max_ids_total: int = 40,
+    max_per_relation_per_row: int = 3,
 ) -> List[Dict[str, Any]]:
     """In-place: reemplaza los IDs de las relations indicadas por {id, name, url}.
 
@@ -236,7 +259,7 @@ def _query(
         kwargs: Dict[str, Any] = {"database_id": db_id, "page_size": page_size}
         if filt:
             kwargs["filter"] = filt
-        resp = _client().databases.query(**kwargs)
+        resp = _retry_429(_client().databases.query, **kwargs)
         return [_flatten_props(p) for p in resp.get("results", [])]
     except APIResponseError as e:
         log.error("Notion query falló db=%s: %s", db_id, e)
@@ -391,6 +414,50 @@ def buscar_clientes_por_nombre_batch(
         return []
     f = _or_contains("Nombre del Cliente", "title", nombres)
     return _query(DB_CLIENTES, f, page_size=page_size)
+
+
+def clientes_de_asesor(asesor_id: str, page_size: int = 100) -> List[Dict[str, Any]]:
+    """1 sola query: clientes donde Asesor.relation contiene asesor_id."""
+    if not asesor_id:
+        return []
+    return _query(
+        DB_CLIENTES,
+        {"property": "Asesor", "relation": {"contains": asesor_id}},
+        page_size=page_size,
+    )
+
+
+def emisiones_de_asesor(asesor_id: str, page_size: int = 100) -> List[Dict[str, Any]]:
+    """Emisiones donde Asesor.relation contiene asesor_id."""
+    if not asesor_id:
+        return []
+    return _query(
+        DB_EMISIONES,
+        {"property": "Asesor", "relation": {"contains": asesor_id}},
+        page_size=page_size,
+    )
+
+
+def emisiones_de_cliente(cliente_id: str, page_size: int = 100) -> List[Dict[str, Any]]:
+    """Emisiones donde Clientes General.relation contiene cliente_id."""
+    if not cliente_id:
+        return []
+    return _query(
+        DB_EMISIONES,
+        {"property": "Clientes General", "relation": {"contains": cliente_id}},
+        page_size=page_size,
+    )
+
+
+def eventos_calendly_de_asesor(asesor_id: str, page_size: int = 100) -> List[Dict[str, Any]]:
+    """Calendly donde Asesores.relation contiene asesor_id."""
+    if not asesor_id:
+        return []
+    return _query(
+        DB_EVENTOS_CALENDLY,
+        {"property": "Asesores", "relation": {"contains": asesor_id}},
+        page_size=page_size,
+    )
 
 
 # Mapeo de DB -> [(propiedad_email, tipo_propiedad)] para clasificar
