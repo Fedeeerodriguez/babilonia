@@ -67,7 +67,7 @@ def _retry_429(fn, *args, max_attempts: int = 4, **kwargs):
 
 def _flatten_props(page: Dict[str, Any]) -> Dict[str, Any]:
     """Aplana las propiedades de una page de Notion a un dict simple."""
-    out: Dict[str, Any] = {"_id": page.get("id"), "_url": page.get("url")}
+    out: Dict[str, Any] = {"_id": page.get("id"), "_url": page.get("url"), "_title": None}
     props = page.get("properties", {}) or {}
     for name, val in props.items():
         t = val.get("type")
@@ -75,6 +75,7 @@ def _flatten_props(page: Dict[str, Any]) -> Dict[str, Any]:
         try:
             if t == "title":
                 v = "".join(x.get("plain_text", "") for x in val.get("title", []))
+                out["_title"] = v  # siempre disponible bajo _title
             elif t == "rich_text":
                 v = "".join(x.get("plain_text", "") for x in val.get("rich_text", []))
             elif t == "email":
@@ -463,15 +464,12 @@ def eventos_calendly_de_asesor(asesor_id: str, page_size: int = 100) -> List[Dic
 # ---------- Agregaciones cross-relacion (UNIÓN exacta, deduplicada) ----------
 
 def _expandir_ids_a_clientes(ids: List[str]) -> List[Dict[str, Any]]:
-    """Expande una lista de IDs y devuelve sus datos como rows de Clientes."""
+    """Expande una lista de IDs (clientes pueden estar en distintas DBs:
+    Clientes General, Clientes Auto, Clientes Patrimonial, etc.).
+    No filtramos props — dejamos pasar todo y el renderer prioriza _title."""
     rows = expandir_ids_full(
         ids,
-        extract_props=[
-            "_id", "_url",
-            "Nombre del Cliente", "Correo", "Teléfono",
-            "Asesor", "CRM Asesores", "Tickets Allianz", "Emisiones",
-            "Eventos Calendly", "Notas General",
-        ],
+        extract_props=None,  # traer TODAS las propiedades
         max_ids=500,
         max_workers=4,
     )
@@ -542,14 +540,23 @@ def clientes_completos_de_asesor(
 
     lista_completa: List[Dict[str, Any]] = []
     for cid in union_ids:
-        r = by_id.get(cid, {"_id": cid, "Nombre del Cliente": None, "Correo": None, "Teléfono": None, "_url": None})
+        r = by_id.get(cid, {"_id": cid})
+        # Nombre: priorizar Nombre del Cliente (Clientes General) y caer a _title (otras DBs)
+        nombre = r.get("Nombre del Cliente") or r.get("Nombre Cliente") or r.get("Nombre completo") or r.get("_title")
+        # DB de origen: la podemos inferir buscando qué propiedades únicas tiene
+        db_origen = None
+        if "Nombre del Cliente" in r:
+            db_origen = "Clientes General"
+        elif r.get("_title") is not None:
+            db_origen = "Otra DB de clientes (Auto/Patrimonial/Migración/etc.)"
         lista_completa.append({
             "id": cid,
-            "nombre": r.get("Nombre del Cliente"),
-            "correo": r.get("Correo"),
-            "telefono": r.get("Teléfono"),
+            "nombre": nombre,
+            "correo": r.get("Correo") or r.get("Correo Cliente"),
+            "telefono": r.get("Teléfono") or r.get("Teléfono Cliente"),
             "url": r.get("_url"),
             "tiene_asesor_asignado": cid in backward_set,
+            "db_origen": db_origen,
         })
 
     return {
