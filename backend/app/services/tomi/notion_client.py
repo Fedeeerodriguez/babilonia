@@ -35,6 +35,33 @@ DB_TICKETS_ALLIANZ = os.getenv("NOTION_DB_TICKETS_ALLIANZ", "")
 DB_TICKETS_BABILONIA = os.getenv("NOTION_DB_TICKETS_BABILONIA", "")
 DB_EVENTOS_CALENDLY = os.getenv("NOTION_DB_EVENTOS_CALENDLY", "")
 
+# Sub-DBs de clientes por producto
+DB_CLIENTES_AUTO = os.getenv("NOTION_DB_CLIENTES_AUTO", "")
+DB_CLIENTES_PATRIMONIAL = os.getenv("NOTION_DB_CLIENTES_PATRIMONIAL", "")
+DB_CLIENTES_EDUCACIONAL = os.getenv("NOTION_DB_CLIENTES_EDUCACIONAL", "")
+DB_CLIENTES_GMM = os.getenv("NOTION_DB_CLIENTES_GMM", "")
+DB_CLIENTES_RENTAS_PRIVADAS = os.getenv("NOTION_DB_CLIENTES_RENTAS_PRIVADAS", "")
+DB_CLIENTES_RESIDENCIAL = os.getenv("NOTION_DB_CLIENTES_RESIDENCIAL", "")
+DB_CLIENTES_PROTECCION = os.getenv("NOTION_DB_CLIENTES_PROTECCION", "")
+DB_CLIENTES_ELITE = os.getenv("NOTION_DB_CLIENTES_ELITE", "")
+DB_CLIENTES_PLU3 = os.getenv("NOTION_DB_CLIENTES_PLU3", "")
+DB_MIGRACION_CLIENTES = os.getenv("NOTION_DB_MIGRACION_CLIENTES", "")
+
+# Mapeo nombre amigable -> DB ID, usado por endpoint debug y búsqueda multi-DB
+SUB_DBS_CLIENTES: Dict[str, str] = {
+    "clientes_general": DB_CLIENTES,
+    "clientes_auto": DB_CLIENTES_AUTO,
+    "clientes_patrimonial": DB_CLIENTES_PATRIMONIAL,
+    "clientes_educacional": DB_CLIENTES_EDUCACIONAL,
+    "clientes_gmm": DB_CLIENTES_GMM,
+    "clientes_rentas_privadas": DB_CLIENTES_RENTAS_PRIVADAS,
+    "clientes_residencial": DB_CLIENTES_RESIDENCIAL,
+    "clientes_proteccion": DB_CLIENTES_PROTECCION,
+    "clientes_elite": DB_CLIENTES_ELITE,
+    "clientes_plu3": DB_CLIENTES_PLU3,
+    "migracion_clientes": DB_MIGRACION_CLIENTES,
+}
+
 
 def _client() -> Client:
     if not NOTION_TOKEN:
@@ -573,6 +600,56 @@ def clientes_completos_de_asesor(
         "lista_completa": lista_completa,
         "ids": union_ids,
     }
+
+
+def buscar_cliente_en_todas_dbs(
+    email: Optional[str] = None,
+    nombre: Optional[str] = None,
+    max_per_db: int = 5,
+) -> List[Dict[str, Any]]:
+    """Busca en TODAS las sub-DBs de clientes (Auto, Patrimonial, etc.) en paralelo.
+    Devuelve matches con `_db_origen` marcado para cada uno."""
+    if not email and not nombre:
+        return []
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    def query_one(db_name: str, db_id: str) -> List[Dict[str, Any]]:
+        if not db_id:
+            return []
+        # Construir filtro: probar Correo, Correo Cliente (rich_text) y title contains nombre
+        or_conds: List[Dict[str, Any]] = []
+        if email:
+            or_conds.append({"property": "Correo", "rich_text": {"contains": email}})
+            or_conds.append({"property": "Correo Cliente", "rich_text": {"contains": email}})
+        if nombre:
+            # title varía entre DBs — usamos el endpoint que no asume nombre fijo:
+            # primero query genérica luego filtramos por _title
+            pass
+        filt: Optional[Dict[str, Any]] = None
+        if or_conds:
+            filt = or_conds[0] if len(or_conds) == 1 else {"or": or_conds}
+        try:
+            rows = _query(db_id, filt, page_size=max_per_db)
+            # Si tenemos nombre y no email, filtrar por _title contains (case-insensitive)
+            if nombre and not email:
+                nlow = nombre.lower()
+                rows = [r for r in rows if (r.get("_title") or "").lower().find(nlow) >= 0]
+            for r in rows:
+                r["_db_origen"] = db_name
+            return rows
+        except Exception as e:
+            log.debug("query db %s falló (puede no estar compartida): %s", db_name, e)
+            return []
+
+    results: List[Dict[str, Any]] = []
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        futs = {ex.submit(query_one, n, d): n for n, d in SUB_DBS_CLIENTES.items() if d}
+        for fut in as_completed(futs):
+            try:
+                results.extend(fut.result(timeout=30))
+            except Exception:
+                pass
+    return results
 
 
 def emisiones_completas_de_asesor(asesor_record: Dict[str, Any]) -> Dict[str, Any]:

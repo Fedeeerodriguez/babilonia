@@ -194,6 +194,17 @@ def debug_schema(db_name: str, x_tomi_key: Optional[str] = Header(default=None))
         "tickets_allianz": nc.DB_TICKETS_ALLIANZ,
         "tickets_babilonia": nc.DB_TICKETS_BABILONIA,
         "calendly": nc.DB_EVENTOS_CALENDLY,
+        # sub-DBs de clientes
+        "clientes_auto": nc.DB_CLIENTES_AUTO,
+        "clientes_patrimonial": nc.DB_CLIENTES_PATRIMONIAL,
+        "clientes_educacional": nc.DB_CLIENTES_EDUCACIONAL,
+        "clientes_gmm": nc.DB_CLIENTES_GMM,
+        "clientes_rentas_privadas": nc.DB_CLIENTES_RENTAS_PRIVADAS,
+        "clientes_residencial": nc.DB_CLIENTES_RESIDENCIAL,
+        "clientes_proteccion": nc.DB_CLIENTES_PROTECCION,
+        "clientes_elite": nc.DB_CLIENTES_ELITE,
+        "clientes_plu3": nc.DB_CLIENTES_PLU3,
+        "migracion_clientes": nc.DB_MIGRACION_CLIENTES,
     }
     db_id = db_map.get(db_name)
     if not db_id:
