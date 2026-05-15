@@ -128,10 +128,20 @@ def consultar(
         if u.get("tipo") == "prospecto":
             no_emails.append(e)
         d = u.get("data") or {}
+        # Nombres por tipo de DB
+        nombre = (
+            d.get("Nombre Completo")          # asesores
+            or d.get("Nombre completo")        # estudiantes
+            or d.get("Nombre del Cliente")     # clientes general
+            or " ".join(filter(None, [d.get("Primer Nombre"), d.get("Apellido Paterno")]))
+            or " ".join(filter(None, [d.get("Nombre(s)"), d.get("Apellido(s)")]))
+            or None
+        )
         usuarios.append({
             "email": e,
             "tipo": u["tipo"],
-            "nombre": d.get("Nombre") or d.get("Cliente") or d.get("Nombre y Apellido"),
+            "nombre": nombre.strip() if nombre else None,
+            "telefono": d.get("Teléfono"),
             "data": d,
         })
 
