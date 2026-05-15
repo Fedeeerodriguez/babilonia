@@ -166,6 +166,93 @@ def buscar_emisiones(
     return _query(DB_EMISIONES, filt)
 
 
+# ---------- Búsquedas batch (or filter Notion, 1 query por N items) ----------
+
+def _or_filter(prop: str, ptype: str, values: List[str]) -> Optional[Dict[str, Any]]:
+    """Construye {'or': [{property, ptype: {contains: v}}, ...]} o None si lista vacía."""
+    values = [v for v in (values or []) if v]
+    if not values:
+        return None
+    if len(values) == 1:
+        return {"property": prop, ptype: {"contains" if ptype != "email" else "equals": values[0]}}
+    op = "contains" if ptype != "email" else "equals"
+    return {"or": [{"property": prop, ptype: {op: v}} for v in values]}
+
+
+def buscar_emisiones_batch(
+    polizas: Optional[List[str]] = None,
+    clientes: Optional[List[str]] = None,
+    page_size: int = 100,
+) -> List[Dict[str, Any]]:
+    polizas = [p for p in (polizas or []) if p]
+    clientes = [c for c in (clientes or []) if c]
+    if not polizas and not clientes:
+        return []
+    or_conds: List[Dict[str, Any]] = []
+    or_conds += [{"property": "Póliza", "rich_text": {"contains": p}} for p in polizas]
+    or_conds += [{"property": "Cliente", "title": {"contains": c}} for c in clientes]
+    filt = or_conds[0] if len(or_conds) == 1 else {"or": or_conds}
+    return _query(DB_EMISIONES, filt, page_size=page_size)
+
+
+def buscar_cobranzas_batch(
+    polizas: List[str], page_size: int = 100,
+) -> List[Dict[str, Any]]:
+    f = _or_filter("Póliza", "rich_text", polizas)
+    if not f:
+        return []
+    return _query(DB_COBRANZAS, f, page_size=page_size)
+
+
+def buscar_tickets_allianz_batch(
+    tramites: Optional[List[str]] = None, page_size: int = 50,
+) -> List[Dict[str, Any]]:
+    f = _or_filter("Trámite", "title", tramites or [])
+    return _query(DB_TICKETS_ALLIANZ, f, page_size=page_size)
+
+
+def buscar_calendly_batch(
+    clientes: Optional[List[str]] = None, page_size: int = 50,
+) -> List[Dict[str, Any]]:
+    f = _or_filter("Nombre", "title", clientes or [])
+    return _query(DB_EVENTOS_CALENDLY, f, page_size=page_size)
+
+
+def clasificar_usuarios_batch(emails: List[str]) -> Dict[str, Dict[str, Any]]:
+    """Para cada email devuelve {email: {tipo, data}}. 3 queries Notion total (asesores, estudiantes, clientes)."""
+    emails = list({e.strip().lower() for e in (emails or []) if e and "@" in e})
+    if not emails:
+        return {}
+
+    asesores = _query(DB_ASESORES, _or_filter("Correo electrónico", "email", emails))
+    estudiantes = _query(DB_ESTUDIANTES, _or_filter("Correo electrónico", "email", emails))
+    clientes = _query(DB_CLIENTES, _or_filter("Correo electrónico", "email", emails))
+
+    def _idx(rows: List[Dict[str, Any]], tipo: str) -> Dict[str, Dict[str, Any]]:
+        out: Dict[str, Dict[str, Any]] = {}
+        for r in rows:
+            email = (r.get("Correo electrónico") or "").lower()
+            if email:
+                out[email] = {"tipo": tipo, "data": r}
+        return out
+
+    idx_asesor = _idx(asesores, "asesor")
+    idx_estud = _idx(estudiantes, "estudiante")
+    idx_cli = _idx(clientes, "cliente")
+
+    result: Dict[str, Dict[str, Any]] = {}
+    for e in emails:
+        if e in idx_asesor:
+            result[e] = idx_asesor[e]
+        elif e in idx_estud:
+            result[e] = idx_estud[e]
+        elif e in idx_cli:
+            result[e] = idx_cli[e]
+        else:
+            result[e] = {"tipo": "prospecto", "data": None}
+    return result
+
+
 def buscar_cobranzas_por_poliza(poliza: str) -> List[Dict[str, Any]]:
     if not poliza:
         return []

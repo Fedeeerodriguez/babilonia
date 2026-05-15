@@ -15,6 +15,7 @@ from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from app.services.tomi import notion_client as nc
+from app.services.tomi import bases_datos as bd
 
 router = APIRouter(prefix="/api/tomi", tags=["tomi"])
 
@@ -120,3 +121,29 @@ def tickets_babilonia(body: TicketsBabiloniaIn, x_tomi_key: Optional[str] = Head
 def calendly(body: CalendlyIn, x_tomi_key: Optional[str] = Header(default=None)):
     _auth(x_tomi_key)
     return {"results": nc.buscar_eventos_calendly(cliente=body.cliente, limit=body.limit)}
+
+
+# ---------- Sub-agente bases_datos orquestado (1 endpoint para todo) ----------
+
+class BasesDatosIn(BaseModel):
+    mensaje: str = ""
+    wa_id: Optional[str] = None
+    emails: Optional[List[str]] = None
+    polizas: Optional[List[str]] = None
+    clientes: Optional[List[str]] = None
+    incluir: Optional[List[str]] = Field(
+        default=None,
+        description="Subset de: usuarios|emisiones|cobranzas|tickets_allianz|calendly. Si null, se infiere del mensaje.",
+    )
+
+
+@router.post("/bases-datos")
+def bases_datos(body: BasesDatosIn, x_tomi_key: Optional[str] = Header(default=None)):
+    _auth(x_tomi_key)
+    return bd.consultar(
+        mensaje=body.mensaje,
+        emails=body.emails,
+        polizas=body.polizas,
+        clientes=body.clientes,
+        incluir=body.incluir,
+    )
