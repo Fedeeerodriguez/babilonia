@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import Base, engine
-from app.routers import auth, users, dashboard, metrics, conversations, documents, agent
+from app.routers import auth, users, dashboard, metrics, conversations, documents, agent, tomi
 
 load_dotenv(override=True)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -25,7 +25,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-for r in [auth, users, dashboard, metrics, conversations, documents, agent]:
+for r in [auth, users, dashboard, metrics, conversations, documents, agent, tomi]:
     app.include_router(r.router)
 
 
