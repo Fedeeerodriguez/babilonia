@@ -104,6 +104,68 @@ def _flatten_props(page: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
+def _page_title(page: Dict[str, Any]) -> Optional[str]:
+    """Extrae el title de una page Notion."""
+    for _, v in (page.get("properties") or {}).items():
+        if v.get("type") == "title":
+            return "".join(x.get("plain_text", "") for x in v.get("title", []))
+    return None
+
+
+def _resolve_page_id(page_id: str) -> Dict[str, Any]:
+    """Devuelve {id, name, url} de una page por ID. Cache simple en proc."""
+    try:
+        page = _client().pages.retrieve(page_id=page_id)
+        return {
+            "id": page_id,
+            "name": _page_title(page),
+            "url": page.get("url"),
+        }
+    except Exception as e:
+        log.debug("resolve_page falló id=%s: %s", page_id, e)
+        return {"id": page_id, "name": None, "url": None}
+
+
+def resolver_relaciones(
+    rows: List[Dict[str, Any]],
+    relations: List[str],
+    max_workers: int = 10,
+) -> List[Dict[str, Any]]:
+    """In-place: reemplaza los IDs de las relations indicadas por {id, name, url}.
+
+    Eficiente: junta todos los IDs únicos de todas las rows, los resuelve en paralelo
+    una sola vez, y rellena. Ignora props inexistentes.
+    """
+    if not rows:
+        return rows
+    all_ids: set = set()
+    for row in rows:
+        for prop in relations:
+            ids = row.get(prop)
+            if isinstance(ids, list):
+                for v in ids:
+                    if isinstance(v, str) and len(v) >= 32:
+                        all_ids.add(v)
+    if not all_ids:
+        return rows
+    from concurrent.futures import ThreadPoolExecutor
+    cache: Dict[str, Dict[str, Any]] = {}
+    with ThreadPoolExecutor(max_workers=max_workers) as ex:
+        futs = {ex.submit(_resolve_page_id, pid): pid for pid in all_ids}
+        for fut in futs:
+            pid = futs[fut]
+            try:
+                cache[pid] = fut.result(timeout=20)
+            except Exception:
+                cache[pid] = {"id": pid, "name": None, "url": None}
+    for row in rows:
+        for prop in relations:
+            ids = row.get(prop)
+            if isinstance(ids, list):
+                row[prop] = [cache.get(v, {"id": v, "name": None, "url": None}) if isinstance(v, str) and len(v) >= 32 else v for v in ids]
+    return rows
+
+
 def _query(
     db_id: str,
     filt: Optional[Dict[str, Any]] = None,

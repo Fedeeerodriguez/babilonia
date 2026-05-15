@@ -146,11 +146,33 @@ def consultar(
                 log.error("consulta %s falló: %s", name, e)
                 results[name] = [] if name != "usuarios" else {}
 
-    # 3. Segunda ola: Calendly depende de IDs de asesores (si los buscamos por nombre)
+    # 3. Segunda ola: Calendly depende de IDs de asesores
     asesor_ids: List[str] = []
     for a in (results.get("asesores_por_nombre") or []):
         if a.get("_id"):
             asesor_ids.append(a["_id"])
+
+    # 3a. FALLBACK: si pidieron asesor pero no se encontró, intentar via Clientes
+    # (la DB Clientes tiene la relation Asesor — buscamos al cliente y miramos su asesor)
+    if asesores_uniq and not asesor_ids and clientes_uniq:
+        try:
+            queries_count += 1
+            clientes_rows = nc.buscar_clientes_por_nombre_batch(clientes_uniq)
+            for c in clientes_rows:
+                rel = c.get("Asesor") or c.get("CRM Asesores") or []
+                if isinstance(rel, list):
+                    asesor_ids.extend([v for v in rel if isinstance(v, str) and len(v) >= 32])
+            # también traer info de esos asesores
+            if asesor_ids and not results.get("asesores_por_nombre"):
+                ids_uniq = list({a for a in asesor_ids})
+                # resolver names via pages.retrieve (cacheado en resolver)
+                results["asesores_por_nombre"] = []
+                for aid in ids_uniq:
+                    p = nc._resolve_page_id(aid)
+                    queries_count += 1
+                    results["asesores_por_nombre"].append({"_id": aid, "Nombre Completo": p.get("name"), "_url": p.get("url")})
+        except Exception as e:
+            log.error("fallback cliente->asesor falló: %s", e)
 
     if "calendly" in incluir_set:
         try:
@@ -162,6 +184,28 @@ def consultar(
         except Exception as e:
             log.error("calendly falló: %s", e)
             results["calendly"] = []
+
+    # 4. Resolver relations -> {id, name, url} en cada categoría
+    RELATIONS_BY_TYPE: Dict[str, List[str]] = {
+        "emisiones": ["Asesor", "Cerrador", "Clientes General", "Cobranza", "Tickets Allianz", "Lanzamientos", "Producto"],
+        "cobranzas": ["Asesores ", "Cerradores", "Líderes", "Emisiones"],
+        "tickets_allianz": ["Clientes General", "Asesores ", "Cerradores"],
+        "calendly": ["Asesores", "Clientes General", "CRM Asesores", "Cerradores ", "Líderes ", "Lanzamientos"],
+        "clientes_por_nombre": ["Asesor", "CRM Asesores", "Tickets Allianz", "Eventos Calendly", "Tickets Babilonia"],
+        "asesores_por_nombre": ["Líder", "Clientes General", "Eventos Calendly", "Líder "],
+    }
+    try:
+        for cat, rels in RELATIONS_BY_TYPE.items():
+            rows = results.get(cat)
+            if isinstance(rows, list) and rows:
+                nc.resolver_relaciones(rows, rels)
+        # Resolver también en usuarios (que vienen de clasificar — son dicts con .data)
+        if results.get("usuarios"):
+            datas = [u.get("data") for u in results["usuarios"].values() if isinstance(u, dict) and u.get("data")]
+            if datas:
+                nc.resolver_relaciones(datas, ["Asesor", "CRM Asesores", "Líder", "Clientes General"])
+    except Exception as e:
+        log.error("resolver_relaciones falló: %s", e)
 
     # 3. Armar respuesta
     usuarios_map: Dict[str, Dict[str, Any]] = results.get("usuarios", {})
