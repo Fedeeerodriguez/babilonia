@@ -130,10 +130,12 @@ class BasesDatosIn(BaseModel):
     wa_id: Optional[str] = None
     emails: Optional[List[str]] = None
     polizas: Optional[List[str]] = None
-    clientes: Optional[List[str]] = None
+    clientes: Optional[List[str]] = Field(default=None, description="Nombres de clientes (no emails)")
+    asesores: Optional[List[str]] = Field(default=None, description="Nombres de asesores")
     incluir: Optional[List[str]] = Field(
         default=None,
-        description="Subset de: usuarios|emisiones|cobranzas|tickets_allianz|calendly. Si null, se infiere del mensaje.",
+        description=("Subset de: usuarios|emisiones|cobranzas|tickets_allianz|calendly|"
+                     "clientes_por_nombre|asesores_por_nombre. Si null, se infiere del mensaje."),
     )
 
 
@@ -145,6 +147,7 @@ def bases_datos(body: BasesDatosIn, x_tomi_key: Optional[str] = Header(default=N
         emails=body.emails,
         polizas=body.polizas,
         clientes=body.clientes,
+        asesores=body.asesores,
         incluir=body.incluir,
     )
 

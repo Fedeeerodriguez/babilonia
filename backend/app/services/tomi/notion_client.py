@@ -219,10 +219,52 @@ def buscar_tickets_allianz_batch(
 
 
 def buscar_calendly_batch(
-    clientes: Optional[List[str]] = None, page_size: int = 50,
+    clientes: Optional[List[str]] = None,
+    asesor_ids: Optional[List[str]] = None,
+    page_size: int = 50,
 ) -> List[Dict[str, Any]]:
-    f = _or_contains("Nombre del invitado", "rich_text", clientes or [])
-    return _query(DB_EVENTOS_CALENDLY, f, page_size=page_size)
+    """Filtra Calendly por nombre/correo del invitado y/o por IDs de Asesor (relación)."""
+    clientes = [c for c in (clientes or []) if c]
+    asesor_ids = [a for a in (asesor_ids or []) if a]
+    or_conds: List[Dict[str, Any]] = []
+    for c in clientes:
+        or_conds.append({"property": "Nombre del invitado", "rich_text": {"contains": c}})
+        or_conds.append({"property": "Correo invitado", "rich_text": {"contains": c}})
+    for aid in asesor_ids:
+        # Asesores es relation - filtrar por contains de page id
+        or_conds.append({"property": "Asesores", "relation": {"contains": aid}})
+    if not or_conds:
+        return _query(DB_EVENTOS_CALENDLY, None, page_size=page_size)
+    filt = or_conds[0] if len(or_conds) == 1 else {"or": or_conds}
+    return _query(DB_EVENTOS_CALENDLY, filt, page_size=page_size)
+
+
+def buscar_asesores_por_nombre_batch(
+    nombres: List[str], page_size: int = 50,
+) -> List[Dict[str, Any]]:
+    """Busca asesores por título Nombre Completo + Primer/Segundo/Apellidos."""
+    nombres = [n for n in (nombres or []) if n and len(n.strip()) >= 2]
+    if not nombres:
+        return []
+    or_conds: List[Dict[str, Any]] = []
+    for n in nombres:
+        or_conds.append({"property": "Nombre Completo", "title": {"contains": n}})
+        or_conds.append({"property": "Primer Nombre", "rich_text": {"contains": n}})
+        or_conds.append({"property": "Apellido Paterno", "rich_text": {"contains": n}})
+        or_conds.append({"property": "Apellido Materno", "rich_text": {"contains": n}})
+    filt = or_conds[0] if len(or_conds) == 1 else {"or": or_conds}
+    return _query(DB_ASESORES, filt, page_size=page_size)
+
+
+def buscar_clientes_por_nombre_batch(
+    nombres: List[str], page_size: int = 50,
+) -> List[Dict[str, Any]]:
+    """Busca clientes por título Nombre del Cliente."""
+    nombres = [n for n in (nombres or []) if n and len(n.strip()) >= 2]
+    if not nombres:
+        return []
+    f = _or_contains("Nombre del Cliente", "title", nombres)
+    return _query(DB_CLIENTES, f, page_size=page_size)
 
 
 # Mapeo de DB -> [(propiedad_email, tipo_propiedad)] para clasificar
