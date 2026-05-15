@@ -460,6 +460,173 @@ def eventos_calendly_de_asesor(asesor_id: str, page_size: int = 100) -> List[Dic
     )
 
 
+# ---------- Agregaciones cross-relacion (UNIÓN exacta, deduplicada) ----------
+
+def _expandir_ids_a_clientes(ids: List[str]) -> List[Dict[str, Any]]:
+    """Expande una lista de IDs y devuelve sus datos como rows de Clientes."""
+    rows = expandir_ids_full(
+        ids,
+        extract_props=[
+            "_id", "_url",
+            "Nombre del Cliente", "Correo", "Teléfono",
+            "Asesor", "CRM Asesores", "Tickets Allianz", "Emisiones",
+            "Eventos Calendly", "Notas General",
+        ],
+        max_ids=500,
+        max_workers=4,
+    )
+    return rows
+
+
+def clientes_completos_de_asesor(
+    asesor_record: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Une TODAS las relaciones que vinculan un asesor a clientes:
+    - Forward: las relations en el record del asesor (Clientes General, etc.)
+    - Backward: Clientes donde Asesor/CRM Asesores contiene su ID.
+
+    Retorna: {total_unico, por_fuente, lista_completa, ids}. La lista_completa
+    tiene cada cliente UNA SOLA VEZ con datos reales (no IDs).
+    """
+    asesor_id = asesor_record.get("_id")
+    if not asesor_id:
+        return {"total_unico": 0, "por_fuente": {}, "lista_completa": [], "ids": []}
+
+    # 1. Forward: IDs en el record del asesor
+    forward_props = [
+        "Clientes General",
+        "Clientes ",            # con espacio — existe en el schema
+        "Clientes - Acompañados",
+        "Migración de Clientes",
+    ]
+    forward_ids: List[str] = []
+    by_field: Dict[str, int] = {}
+    for prop in forward_props:
+        ids = asesor_record.get(prop) or []
+        if isinstance(ids, list):
+            valid = [v for v in ids if isinstance(v, str) and len(v) >= 32]
+            forward_ids.extend(valid)
+            by_field[prop] = len(valid)
+
+    # 2. Backward: query Clientes General donde Asesor/CRM Asesores contiene este asesor
+    backward_rows: List[Dict[str, Any]] = []
+    try:
+        backward_rows = _query(
+            DB_CLIENTES,
+            {"or": [
+                {"property": "Asesor", "relation": {"contains": asesor_id}},
+                {"property": "CRM Asesores", "relation": {"contains": asesor_id}},
+            ]},
+            page_size=200,
+        )
+    except Exception as e:
+        log.error("backward query clientes falló: %s", e)
+
+    backward_ids = [r.get("_id") for r in backward_rows if r.get("_id")]
+
+    # 3. Unir, dedupe, expandir los forward_ids que no aparezcan en backward
+    backward_set = set(backward_ids)
+    forward_set = set(forward_ids)
+    union_ids = sorted(forward_set | backward_set)
+
+    # Los backward ya vienen expandidos; los forward que no están en backward → expandir
+    extra_ids = list(forward_set - backward_set)
+    extra_rows = _expandir_ids_a_clientes(extra_ids) if extra_ids else []
+
+    # Indexar por _id
+    by_id: Dict[str, Dict[str, Any]] = {}
+    for r in backward_rows + extra_rows:
+        rid = r.get("_id")
+        if rid:
+            by_id[rid] = r
+
+    lista_completa: List[Dict[str, Any]] = []
+    for cid in union_ids:
+        r = by_id.get(cid, {"_id": cid, "Nombre del Cliente": None, "Correo": None, "Teléfono": None, "_url": None})
+        lista_completa.append({
+            "id": cid,
+            "nombre": r.get("Nombre del Cliente"),
+            "correo": r.get("Correo"),
+            "telefono": r.get("Teléfono"),
+            "url": r.get("_url"),
+            "tiene_asesor_asignado": cid in backward_set,
+        })
+
+    return {
+        "total_unico": len(union_ids),
+        "por_fuente": {
+            "forward_record_asesor": by_field,
+            "backward_clientes_asesor": len(backward_ids),
+            "total_forward_unico": len(forward_set),
+            "total_backward_unico": len(backward_set),
+            "interseccion": len(forward_set & backward_set),
+            "solo_forward": len(forward_set - backward_set),
+            "solo_backward": len(backward_set - forward_set),
+        },
+        "lista_completa": lista_completa,
+        "ids": union_ids,
+    }
+
+
+def emisiones_completas_de_asesor(asesor_record: Dict[str, Any]) -> Dict[str, Any]:
+    """Union de emisiones: forward (IDs en record) + backward (Asesor.contains)."""
+    asesor_id = asesor_record.get("_id")
+    if not asesor_id:
+        return {"total_unico": 0, "lista_completa": []}
+    # Backward
+    backward = []
+    try:
+        backward = _query(
+            DB_EMISIONES,
+            {"property": "Asesor", "relation": {"contains": asesor_id}},
+            page_size=200,
+        )
+    except Exception as e:
+        log.error("emisiones backward falló: %s", e)
+    backward_set = {r.get("_id") for r in backward if r.get("_id")}
+
+    # Forward: Emisiones en el record + Emisiones 1
+    forward_ids: List[str] = []
+    for prop in ("Emisiones", "Emisiones 1"):
+        ids = asesor_record.get(prop) or []
+        if isinstance(ids, list):
+            forward_ids.extend([v for v in ids if isinstance(v, str) and len(v) >= 32])
+    forward_set = set(forward_ids)
+    extra = forward_set - backward_set
+    extra_rows = []
+    if extra:
+        extra_rows = expandir_ids_full(
+            list(extra),
+            extract_props=["_id", "_url", "Solicitud", "Número de Póliza", "Nombre Cliente",
+                           "Correo Cliente", "Prima", "Estado", "Fecha de Emisión", "Producto (nombre)"],
+            max_ids=200,
+        )
+
+    by_id: Dict[str, Dict[str, Any]] = {}
+    for r in backward + extra_rows:
+        rid = r.get("_id")
+        if rid:
+            by_id[rid] = r
+
+    union = sorted(backward_set | forward_set)
+    lista = []
+    for eid in union:
+        r = by_id.get(eid, {"_id": eid})
+        lista.append({
+            "id": eid,
+            "solicitud": r.get("Solicitud"),
+            "poliza": r.get("Número de Póliza"),
+            "cliente": r.get("Nombre Cliente"),
+            "correo_cliente": r.get("Correo Cliente"),
+            "prima": r.get("Prima"),
+            "estado": r.get("Estado"),
+            "fecha_emision": (r.get("Fecha de Emisión") or {}).get("start") if isinstance(r.get("Fecha de Emisión"), dict) else None,
+            "producto": r.get("Producto (nombre)"),
+            "url": r.get("_url"),
+        })
+    return {"total_unico": len(union), "lista_completa": lista}
+
+
 # Mapeo de DB -> [(propiedad_email, tipo_propiedad)] para clasificar
 EMAIL_PROPS: Dict[str, List[tuple]] = {
     "asesor": [("Correo", "rich_text"), ("Correo Hotmart", "rich_text")],

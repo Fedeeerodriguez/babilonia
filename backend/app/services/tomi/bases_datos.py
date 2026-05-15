@@ -198,20 +198,22 @@ def consultar(
 
             uid = data.get("_id")
             if tipo == "asesor" and uid:
-                # 1 query por categoría (filtro por relation) en vez de N pages.retrieve
+                # Agregación COMPLETA: union forward (record) + backward (queries)
                 try:
-                    clientes_rows = nc.clientes_de_asesor(uid)
+                    clientes_agg = nc.clientes_completos_de_asesor(data)
                     queries_count += 1
-                    exp["clientes"] = [{
-                        "nombre": c.get("Nombre del Cliente"),
-                        "correo": c.get("Correo"),
-                        "telefono": c.get("Teléfono"),
-                        "url": c.get("_url"),
-                        "id": c.get("_id"),
-                    } for c in clientes_rows]
-                    exp["total_clientes"] = len(exp["clientes"])
+                    exp["clientes"] = clientes_agg["lista_completa"]
+                    exp["total_clientes"] = clientes_agg["total_unico"]
+                    exp["clientes_por_fuente"] = clientes_agg["por_fuente"]
                 except Exception as e:
-                    log.error("clientes_de_asesor falló: %s", e)
+                    log.error("clientes_completos_de_asesor falló: %s", e)
+                try:
+                    emis_agg = nc.emisiones_completas_de_asesor(data)
+                    queries_count += 1
+                    exp["emisiones"] = emis_agg["lista_completa"]
+                    exp["total_emisiones"] = emis_agg["total_unico"]
+                except Exception as e:
+                    log.error("emisiones_completas_de_asesor falló: %s", e)
                 try:
                     eventos = nc.eventos_calendly_de_asesor(uid)
                     queries_count += 1
@@ -226,21 +228,6 @@ def consultar(
                     exp["total_eventos"] = len(exp["eventos_calendly"])
                 except Exception as e:
                     log.error("eventos_de_asesor falló: %s", e)
-                try:
-                    emis = nc.emisiones_de_asesor(uid)
-                    queries_count += 1
-                    exp["emisiones"] = [{
-                        "solicitud": e_.get("Solicitud"),
-                        "poliza": e_.get("Número de Póliza"),
-                        "cliente": e_.get("Nombre Cliente"),
-                        "correo_cliente": e_.get("Correo Cliente"),
-                        "prima": e_.get("Prima"),
-                        "estado": e_.get("Estado"),
-                        "url": e_.get("_url"),
-                    } for e_ in emis]
-                    exp["total_emisiones"] = len(exp["emisiones"])
-                except Exception as e:
-                    log.error("emisiones_de_asesor falló: %s", e)
 
             elif tipo == "cliente" and uid:
                 # Su asesor: usar pages.retrieve sobre el ID de relation

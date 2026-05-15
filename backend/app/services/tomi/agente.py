@@ -24,12 +24,13 @@ from openai import OpenAI
 
 from app.services.tomi import bases_datos as bd
 from app.services.tomi import notion_client as nc
+from app.services.tomi import informe as inf
 
 log = logging.getLogger("tomi.agente")
 
 CHAT_MODEL = os.getenv("OPENAI_CHAT_MODEL", "gpt-4.1-mini")
 
-SYSTEM_PROMPT = """Sos el SUB-AGENTE DE BASES DE DATOS de Tomi · Babilonia.
+SYSTEM_PROMPT = """Sos el SELECTOR DE TOOLS del sub-agente de bases de datos de Tomi · Babilonia.
 
 CONTEXTO: Recibís consultas del agente principal Tommy (que corre en n8n y atiende a asesores/clientes/estudiantes de Allianz). Tu trabajo es:
 1. Entender la consulta de Tommy.
@@ -67,54 +68,19 @@ ESTRATEGIA:
    pasalas TODAS en una sola llamada — las listas se baten en paralelo.
 6. Máximo 4 tool calls. Si con 1 ya tenés todo, parás.
 
-FORMATO DE OUTPUT (markdown estructurado, sin texto coloquial):
+TU ÚNICO TRABAJO ES ELEGIR LAS TOOLS Y SUS ARGUMENTOS. El informe final lo
+genera Python desde los datos crudos — vos NO escribís texto narrativo.
 
-```
-## Resumen
-[1 línea: qué se buscó y qué se encontró en números]
-
-## Entidades identificadas
-- Emails: [...]
-- Pólizas: [...]
-- Nombres cliente: [...]
-- Nombres asesor: [...]
-
-## Datos
-### Usuarios
-- [tipo] **Nombre Completo** — correo, teléfono
-  - [si asesor] Total clientes: N | Eventos: M
-  - [si cliente] Asesor: X | Pólizas: N | Tickets: M
-
-### Clientes del asesor (si aplica)
-1. Nombre — correo, teléfono, url
-2. ...
-
-### Pólizas / Emisiones
-- **Solicitud / Número de Póliza** — Prima $X, Estado, Asesor, Cliente, Correo Cliente
-
-### Cobranzas
-- Póliza — Estado, Días de atraso, Próximo cobro
-
-### Tickets Allianz / Babilonia
-- Trámite — Estado, Asesor
-
-### Eventos Calendly
-- Evento — Fecha, Invitado, Asesor, Estado
-
-## No encontrado
-- Emails: [...]
-- Pólizas: [...]
-
-## Notas
-[Cualquier observación: datos contradictorios, asesor no asignado, etc.]
-```
+Después de hacer los tool calls que necesites, devolvé un mensaje muy breve
+explicando QUÉ buscaste (no listes los resultados — eso lo hace Python).
+Ejemplo: "Listo. Busqué a Jimena por email y traje sus clientes, emisiones y eventos."
 
 REGLAS DURAS:
-- Nunca inventes datos. Solo lo que devolvieron las tools.
-- Nunca expliques los pasos al usuario. Tommy ya sabe que sos un sub-agente.
-- Si una sección no aplica, omitila completa.
-- Si hay >20 items en una lista, mostrá los primeros 10 y agregá "(+N más, total X)".
-- El campo `datos` del response te lo agrego yo aparte, no lo dupliques en el markdown.
+- NUNCA escribas datos numéricos en tu respuesta. Si necesitás mencionar un número,
+  el informe Python lo va a poner.
+- NUNCA listes nombres, pólizas, fechas o cualquier dato concreto.
+- Tu respuesta final es solo una confirmación de QUÉ se consultó.
+- Si Tommy pide algo que no podés resolver con las tools, decilo explícito.
 """
 
 
@@ -205,6 +171,26 @@ def _dispatch(name: str, args: Dict[str, Any]) -> Any:
     return {"error": f"tool desconocida: {name}"}
 
 
+def _generar_informe_completo(datos_acumulados: List[Dict[str, Any]]) -> str:
+    """Renderiza markdown determinístico uniendo los resultados de TODAS las tools llamadas."""
+    secciones: List[str] = []
+    for item in datos_acumulados:
+        tool = item.get("tool")
+        result = item.get("result") or {}
+        if tool == "consultar_bases" and isinstance(result, dict):
+            secciones.append(inf.renderizar(result))
+        elif tool == "expandir_pagina" and isinstance(result, dict):
+            secciones.append("## Detalle de page Notion\n")
+            for k, v in result.items():
+                if k.startswith("_"):
+                    continue
+                secciones.append(f"- **{k}**: `{v}`")
+            secciones.append("")
+    if not secciones:
+        return "**Sin datos recopilados.**"
+    return "\n\n---\n\n".join(secciones)
+
+
 def _truncar_tool_result(data: Any, max_chars: int = 8000) -> str:
     """Serializa y trunca el resultado de una tool para no inflar el contexto."""
     s = json.dumps(data, ensure_ascii=False, default=str)
@@ -255,7 +241,7 @@ def responder(
                 messages=messages,
                 tools=tools,
                 tool_choice="auto",
-                temperature=0.2,
+                temperature=0,
             )
         except Exception as e:
             log.error("OpenAI falló: %s", e)
@@ -276,12 +262,14 @@ def responder(
         messages.append(asst_msg)
 
         if not msg.tool_calls:
-            # Respuesta final
+            # Generar informe DETERMINÍSTICO desde los datos crudos, ignorando msg.content
+            informe_md = _generar_informe_completo(datos_acumulados)
             return {
-                "respuesta": msg.content or "",
+                "informe": informe_md,           # 100% Python, 100% fiel a Notion
+                "comentario_agente": msg.content or "",  # breve nota del LLM (NO contiene datos)
                 "iteraciones": i + 1,
                 "tool_calls": tool_calls_log,
-                "datos": datos_acumulados,
+                "datos": datos_acumulados,        # JSON crudo para que Tommy procese si quiere
                 "stats": {
                     "tiempo_ms": int((time.time() - t0) * 1000),
                     "modelo": CHAT_MODEL,
