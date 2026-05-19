@@ -292,6 +292,22 @@ def renderizar(resultado: Dict[str, Any]) -> str:
             lines.append(f"- Pólizas sin match: {', '.join(f'`{p}`' for p in ne['polizas'])}")
         lines.append("")
 
+    # ⚠️ Advertencias de calidad de datos
+    advs = resultado.get("advertencias") or []
+    if advs:
+        # ordenar por severidad: error > warning > info
+        sev_order = {"error": 0, "warning": 1, "info": 2}
+        advs_sorted = sorted(advs, key=lambda a: sev_order.get(a.get("severidad"), 9))
+        lines.append(f"## ⚠️ Inconsistencias detectadas ({len(advs)})")
+        for a in advs_sorted:
+            sev = a.get("severidad", "info").upper()
+            ico = {"ERROR": "🔴", "WARNING": "🟡", "INFO": "🔵"}.get(sev, "•")
+            ent = a.get("entidad") or ""
+            lines.append(f"- {ico} **{sev}** `{a.get('tipo')}` [{ent}]: {a.get('mensaje')}")
+            if a.get("sugerencia"):
+                lines.append(f"  - Sugerencia: {a['sugerencia']}")
+        lines.append("")
+
     if len(lines) == 4:  # solo el header y consulta
         lines.append("**Sin resultados.** Verificá que los datos consultados existan en Notion o que la integración tenga acceso a las DBs relevantes.")
 

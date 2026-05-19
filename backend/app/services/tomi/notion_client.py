@@ -22,6 +22,8 @@ from typing import Any, Dict, List, Optional
 from notion_client import Client
 from notion_client.errors import APIResponseError
 
+from app.services.tomi.cache import notion_cache, hash_key
+
 log = logging.getLogger("tomi.notion")
 
 NOTION_TOKEN = os.getenv("NOTION_TOKEN", "")
@@ -164,14 +166,20 @@ def _page_title(page: Dict[str, Any]) -> Optional[str]:
 
 
 def _resolve_page_id(page_id: str) -> Dict[str, Any]:
-    """Devuelve {id, name, url} de una page por ID. Con retry 429."""
+    """Devuelve {id, name, url} de una page por ID. Con retry 429 + caché."""
+    cache_key = f"page_id:{page_id}"
+    cached_val = notion_cache.get(cache_key)
+    if cached_val is not None:
+        return cached_val
     try:
         page = _retry_429(_client().pages.retrieve, page_id=page_id)
-        return {
+        result = {
             "id": page_id,
             "name": _page_title(page),
             "url": page.get("url"),
         }
+        notion_cache.set(cache_key, result)
+        return result
     except Exception as e:
         log.debug("resolve_page falló id=%s: %s", page_id, e)
         return {"id": page_id, "name": None, "url": None}
@@ -179,15 +187,20 @@ def _resolve_page_id(page_id: str) -> Dict[str, Any]:
 
 def _resolve_page_full(page_id: str, extract_props: Optional[List[str]] = None) -> Dict[str, Any]:
     """Devuelve la page completamente flattened + props seleccionadas si se piden."""
-    try:
-        page = _retry_429(_client().pages.retrieve, page_id=page_id)
-        flat = _flatten_props(page)
-        if extract_props:
-            flat = {k: v for k, v in flat.items() if k in extract_props or k.startswith("_")}
-        return flat
-    except Exception as e:
-        log.debug("resolve_page_full falló id=%s: %s", page_id, e)
-        return {"_id": page_id, "name": None}
+    # Cachear el page completo (sin filtrar props — el filtrado es trivial)
+    cache_key = f"page_full:{page_id}"
+    cached_full = notion_cache.get(cache_key)
+    if cached_full is None:
+        try:
+            page = _retry_429(_client().pages.retrieve, page_id=page_id)
+            cached_full = _flatten_props(page)
+            notion_cache.set(cache_key, cached_full)
+        except Exception as e:
+            log.debug("resolve_page_full falló id=%s: %s", page_id, e)
+            return {"_id": page_id, "name": None}
+    if extract_props:
+        return {k: v for k, v in cached_full.items() if k in extract_props or k.startswith("_")}
+    return cached_full
 
 
 def expandir_ids_full(
@@ -283,12 +296,18 @@ def _query(
 ) -> List[Dict[str, Any]]:
     if not db_id:
         return []
+    cache_key = f"query:{hash_key(db_id, filt, page_size)}"
+    cached_val = notion_cache.get(cache_key)
+    if cached_val is not None:
+        return cached_val
     try:
         kwargs: Dict[str, Any] = {"database_id": db_id, "page_size": page_size}
         if filt:
             kwargs["filter"] = filt
         resp = _retry_429(_client().databases.query, **kwargs)
-        return [_flatten_props(p) for p in resp.get("results", [])]
+        result = [_flatten_props(p) for p in resp.get("results", [])]
+        notion_cache.set(cache_key, result)
+        return result
     except APIResponseError as e:
         log.error("Notion query falló db=%s: %s", db_id, e)
         return []

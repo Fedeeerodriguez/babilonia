@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 from app.services.tomi import notion_client as nc
 from app.services.tomi import bases_datos as bd
 from app.services.tomi import agente as ag
+from app.services.tomi.cache import notion_cache
 
 router = APIRouter(prefix="/api/tomi", tags=["tomi"])
 
@@ -177,6 +178,21 @@ def agente_llm(body: AgenteIn, x_tomi_key: Optional[str] = Header(default=None))
         wa_id=body.wa_id,
         max_iter=body.max_iter,
     )
+
+
+# ---------- Cache management ----------
+
+@router.get("/cache/stats")
+def cache_stats(x_tomi_key: Optional[str] = Header(default=None)):
+    _auth(x_tomi_key)
+    return notion_cache.stats()
+
+
+@router.post("/cache/clear")
+def cache_clear(x_tomi_key: Optional[str] = Header(default=None)):
+    _auth(x_tomi_key)
+    notion_cache.clear()
+    return {"cleared": True}
 
 
 # ---------- Debug: ver schema de una DB Notion ----------

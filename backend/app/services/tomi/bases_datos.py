@@ -14,6 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.services.tomi import notion_client as nc
+from app.services.tomi import validaciones as val
 
 log = logging.getLogger("tomi.bases_datos")
 
@@ -353,6 +354,18 @@ def consultar(
         if exp:
             u["expandido"] = exp
 
+    # Validaciones cross-source — corre sobre el resultado completo
+    advertencias: List[Dict[str, Any]] = []
+    try:
+        advertencias = val.detectar({
+            "usuarios": usuarios,
+            "emisiones": emisiones,
+            "cobranzas": cobranzas,
+            "tickets_allianz": results.get("tickets_allianz", []) or [],
+        })
+    except Exception as e:
+        log.error("validaciones falló: %s", e)
+
     elapsed = int((time.time() - t0) * 1000)
     return {
         "usuarios": usuarios,
@@ -366,6 +379,7 @@ def consultar(
             "emails": no_emails,
             "polizas": no_polizas,
         },
+        "advertencias": advertencias,
         "stats": {
             "tiempo_ms": elapsed,
             "queries_notion": queries_count,
@@ -373,5 +387,7 @@ def consultar(
             "polizas_consultadas": len(polizas_uniq),
             "nombres_clientes": len(clientes_uniq),
             "nombres_asesores": len(asesores_uniq),
+            "advertencias_total": len(advertencias),
+            "advertencias_por_severidad": val.resumen_severidades(advertencias),
         },
     }
