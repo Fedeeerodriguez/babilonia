@@ -105,7 +105,7 @@ def _render_usuario_cliente(u: Dict[str, Any]) -> List[str]:
     lines = [
         f"### Cliente: **{_safe(u.get('nombre'))}**",
         f"- Email: `{u['email']}`",
-        f"- Teléfono: `{_safe(u.get('telefono'))}`",
+        f"- Teléfono (record cliente): `{_safe(u.get('telefono'))}`",
         f"- Fecha nacimiento: `{_safe((data.get('Fecha de Nacimiento') or {}).get('start'))}`",
         f"- Notas: `{_safe(data.get('Notas General'))}`",
         f"- URL Notion: {_md_link('abrir record', data.get('_url'))}",
@@ -113,7 +113,8 @@ def _render_usuario_cliente(u: Dict[str, Any]) -> List[str]:
     ]
     asesor = exp.get("asesor")
     if asesor:
-        lines.append("#### Asesor asignado")
+        src = " (resuelto desde sus emisiones)" if asesor.get("_source") == "from_emision" else ""
+        lines.append(f"#### Asesor asignado{src}")
         lines.append(
             f"- {_md_link(_safe(asesor.get('Nombre Completo')), asesor.get('_url'))} — "
             f"`{_safe(asesor.get('Correo'))}` — `{_safe(asesor.get('Teléfono'))}`"
@@ -126,11 +127,14 @@ def _render_usuario_cliente(u: Dict[str, Any]) -> List[str]:
         for i, e_ in enumerate(emis, 1):
             sol = _md_link(_safe(e_.get("solicitud")), e_.get("url"))
             lines.append(
-                f"{i}. {sol} — Póliza: `{_safe(e_.get('poliza'))}` | "
-                f"Prima: `{_safe(e_.get('prima'))}` | "
-                f"Estado: `{_safe(e_.get('estado'))}` | "
-                f"Fecha: `{_safe(e_.get('fecha_emision'))}`"
+                f"{i}. {sol}\n"
+                f"   - **Póliza:** `{_safe(e_.get('poliza'))}` | **Estado:** `{_safe(e_.get('estado'))}`\n"
+                f"   - **Producto:** `{_safe(e_.get('producto'))}` | **Plazo:** `{_safe(e_.get('plazo'))}` años | **Valor plan:** `{_safe(e_.get('valor_plan'))}`\n"
+                f"   - **Prima:** `{_safe(e_.get('prima'))}` | **Conducto cobro:** `{_safe(e_.get('conducto_cobro'))}` | **Fecha cobro original:** `{_safe(e_.get('fecha_cobro_original'))}`\n"
+                f"   - **Asesor:** `{_safe(e_.get('asesor'))}` (`{_safe(e_.get('correo_asesor'))}`) | **Tel. cliente:** `{_safe(e_.get('telefono_cliente'))}`"
             )
+            if e_.get("notas") and e_.get("notas") not in ("—", ""):
+                lines.append(f"   - **Notas:** `{e_.get('notas')}`")
         lines.append("")
     return lines
 
@@ -218,13 +222,23 @@ def renderizar(resultado: Dict[str, Any]) -> str:
         lines.append(f"## Emisiones ({len(emis)})")
         for i, e_ in enumerate(emis, 1):
             sol = _md_link(_safe(e_.get("Solicitud")), e_.get("_url"))
+            # Asesor resuelto via relation
+            asesor_rel = e_.get("Asesor") or []
+            asesor_nombre = (asesor_rel[0].get("name") if asesor_rel and isinstance(asesor_rel[0], dict) else None) or "—"
+            fecha_emi = (e_.get("Fecha de Emisión") or {}).get("start") if isinstance(e_.get("Fecha de Emisión"), dict) else None
+            fecha_cobro = (e_.get("Fecha de Cobro Original") or {}).get("start") if isinstance(e_.get("Fecha de Cobro Original"), dict) else None
             lines.append(
-                f"{i}. {sol} — "
-                f"Póliza: `{_safe(e_.get('Número de Póliza'))}` | "
-                f"Cliente: `{_safe(e_.get('Nombre Cliente'))}` (`{_safe(e_.get('Correo Cliente'))}`) | "
-                f"Prima: `{_safe(e_.get('Prima'))}` | "
-                f"Estado: `{_safe(e_.get('Estado'))}`"
+                f"{i}. {sol}\n"
+                f"   - **Póliza:** `{_safe(e_.get('Número de Póliza'))}` | **Solicitud n°:** `{_safe(e_.get('Número de Solicitud'))}`\n"
+                f"   - **Cliente:** `{_safe(e_.get('Nombre Cliente'))}` — `{_safe(e_.get('Correo Cliente'))}` — `{_safe(e_.get('Teléfono Cliente'))}`\n"
+                f"   - **Asesor:** `{asesor_nombre}` (`{_safe(e_.get('Correo Asesor'))}`)\n"
+                f"   - **Producto:** `{_safe(e_.get('Producto (nombre)'))}` | **Plazo:** `{_safe(e_.get('Plazo Comprometido'))}` años | **Valor plan:** `{_safe(e_.get('Valor Plan'))}`\n"
+                f"   - **Prima:** `{_safe(e_.get('Prima'))}` `{_safe(e_.get('Periodicidad'))}` | **Conducto:** `{_safe(e_.get('Conducto de cobro'))}`\n"
+                f"   - **Estado:** `{_safe(e_.get('Estado'))}` | **Fecha emisión:** `{_safe(fecha_emi)}` | **Fecha cobro original:** `{_safe(fecha_cobro)}`"
             )
+            notas = e_.get("Notas de Emisión")
+            if notas and notas != "—":
+                lines.append(f"   - **Notas:** `{notas}`")
         lines.append("")
 
     # Cobranzas

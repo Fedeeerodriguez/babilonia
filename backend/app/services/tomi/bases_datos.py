@@ -232,6 +232,8 @@ def consultar(
             elif tipo == "cliente" and uid:
                 # Su asesor: usar pages.retrieve sobre el ID de relation
                 ids_asesor = [v for v in (data.get("Asesor") or data.get("CRM Asesores") or []) if isinstance(v, str)]
+                # Filtrar IDs que apuntan al propio cliente (data Notion sucia)
+                ids_asesor = [v for v in ids_asesor if v != uid]
                 if ids_asesor:
                     try:
                         ases_full = nc.expandir_ids_full(
@@ -255,8 +257,29 @@ def consultar(
                         "estado": e_.get("Estado"),
                         "fecha_emision": (e_.get("Fecha de Emisión") or {}).get("start"),
                         "url": e_.get("_url"),
+                        "asesor": (e_.get("Asesor") or [{}])[0].get("name") if e_.get("Asesor") else None,
+                        "correo_asesor": e_.get("Correo Asesor"),
+                        "telefono_cliente": e_.get("Teléfono Cliente"),
+                        "producto": e_.get("Producto (nombre)"),
+                        "valor_plan": e_.get("Valor Plan"),
+                        "plazo": e_.get("Plazo Comprometido"),
+                        "conducto_cobro": e_.get("Conducto de cobro"),
+                        "fecha_cobro_original": (e_.get("Fecha de Cobro Original") or {}).get("start"),
+                        "notas": e_.get("Notas de Emisión"),
                     } for e_ in emis]
                     exp["total_emisiones"] = len(exp["emisiones"])
+                    # Fallback: si cliente.Asesor está vacío, tomar la primera asesora de sus emisiones
+                    if not exp.get("asesor") and exp["emisiones"]:
+                        primer = next((e_ for e_ in emis if e_.get("Asesor")), None)
+                        if primer:
+                            asesor_rel = (primer.get("Asesor") or [{}])[0]
+                            exp["asesor"] = {
+                                "_id": asesor_rel.get("id"),
+                                "_url": asesor_rel.get("url"),
+                                "Nombre Completo": asesor_rel.get("name"),
+                                "Correo": primer.get("Correo Asesor"),
+                                "_source": "from_emision",
+                            }
                 except Exception as e:
                     log.error("emisiones_de_cliente falló: %s", e)
 
