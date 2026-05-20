@@ -89,7 +89,34 @@ def _prioridad_estado(estado: Optional[str]) -> int:
     return _ESTADO_PRIORIDAD.get(estado or "", 99)
 
 
-def cartera_de_asesor(email_asesor: str) -> Dict[str, Any]:
+_ESTADO_CATEGORIA = {
+    "Activa": "activo",
+    "Pagada – Pendiente de Emisión": "en_proceso",
+    "Aprobada – Pendiente de Pago": "en_proceso",
+    "Cliente Firmando": "en_proceso",
+    "Cliente en Biométrico": "en_proceso",
+    "Por subir a Portal": "en_proceso",
+    "En Autorización": "en_proceso",
+    "Documentos Faltantes": "en_proceso",
+    "Cancelada": "perdido",
+    "Cancelación Pre-Emisión": "perdido",
+}
+
+
+def _categoria_cliente(polizas: List[Dict[str, Any]]) -> str:
+    """Devuelve 'activo' | 'en_proceso' | 'perdido' según la mejor póliza del cliente."""
+    estados = [p.get("estado") for p in polizas]
+    if any(_ESTADO_CATEGORIA.get(e) == "activo" for e in estados):
+        return "activo"
+    if any(_ESTADO_CATEGORIA.get(e) == "en_proceso" for e in estados):
+        return "en_proceso"
+    return "perdido"
+
+
+def cartera_de_asesor(
+    email_asesor: str,
+    filtro_estado: Optional[str] = None,
+) -> Dict[str, Any]:
     """Construye la cartera deduplicada de un asesor.
 
     Algoritmo:
@@ -191,6 +218,7 @@ def cartera_de_asesor(email_asesor: str) -> Dict[str, Any]:
         polizas_list.sort(key=lambda p: (_prioridad_estado(p.get("estado")), -(int((p.get("fecha_emision") or "0000-00-00").replace("-", "")[:8]) if p.get("fecha_emision") else 0)))
 
         total_polizas += len(polizas_list)
+        categoria = _categoria_cliente(polizas_list)
         clientes_out.append({
             "email": email_cli or None,
             "nombre": nombre,
@@ -198,15 +226,37 @@ def cartera_de_asesor(email_asesor: str) -> Dict[str, Any]:
             "polizas": polizas_list,
             "total_polizas": len(polizas_list),
             "fondos_consolidados": sorted(fondos_consolidados),
+            "categoria": categoria,
             "_key": key,
         })
 
-    # 4. Ordenar clientes por cantidad de pólizas DESC, luego por nombre
-    clientes_out.sort(key=lambda c: (-c["total_polizas"], (c["nombre"] or "").lower()))
+    # 4. Aplicar filtro_estado si viene
+    todos_clientes = list(clientes_out)
+    if filtro_estado in ("activos", "en_proceso", "perdidos"):
+        mapa = {"activos": "activo", "en_proceso": "en_proceso", "perdidos": "perdido"}
+        target = mapa[filtro_estado]
+        clientes_out = [c for c in clientes_out if c["categoria"] == target]
+
+    # 5. Ordenar clientes por categoría (activos primero) → cantidad pólizas DESC → nombre
+    _orden_cat = {"activo": 0, "en_proceso": 1, "perdido": 2}
+    clientes_out.sort(key=lambda c: (_orden_cat.get(c["categoria"], 9), -c["total_polizas"], (c["nombre"] or "").lower()))
+
+    # 6. Segmentación (sobre TODOS los clientes — no afectada por filtro)
+    segmentos = {"activos": 0, "en_proceso": 0, "perdidos": 0}
+    for c in todos_clientes:
+        if c["categoria"] == "activo":
+            segmentos["activos"] += 1
+        elif c["categoria"] == "en_proceso":
+            segmentos["en_proceso"] += 1
+        else:
+            segmentos["perdidos"] += 1
 
     return {
         "asesor_email": email_asesor,
-        "total_clientes_unicos": len(clientes_out),
+        "filtro_estado": filtro_estado,
+        "total_clientes_unicos": len(todos_clientes),
+        "total_clientes_devueltos": len(clientes_out),
+        "segmentos": segmentos,
         "total_polizas": total_polizas,
         "total_fondos_distintos": len({f for c in clientes_out for f in c["fondos_consolidados"]}),
         "clientes": clientes_out,
@@ -231,6 +281,7 @@ def consultar(
     email_cliente: Optional[str] = None,
     solo_activas: bool = False,
     limite: int = 100,
+    filtro_estado: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Orquesta las búsquedas en paralelo y devuelve el JSON estructurado.
 
@@ -255,7 +306,7 @@ def consultar(
     # dedicada y retornar directo (no pasa por la maquinaria de búsqueda general).
     if modo == "cartera" and email_asesor:
         t_c0 = time.time()
-        cartera = cartera_de_asesor(email_asesor)
+        cartera = cartera_de_asesor(email_asesor, filtro_estado=filtro_estado)
         cartera["modo"] = "cartera"
         cartera["stats"]["tiempo_ms"] = int((time.time() - t_c0) * 1000)
         return cartera

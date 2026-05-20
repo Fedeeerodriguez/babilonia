@@ -180,6 +180,11 @@ def _tools_schema() -> List[Dict[str, Any]]:
                             "type": "integer",
                             "description": "Cap superior por categoría (default 100). Bajá a 10-20 para top results.",
                         },
+                        "filtro_estado": {
+                            "type": "string",
+                            "enum": ["activos", "en_proceso", "perdidos"],
+                            "description": "(solo modo cartera) Filtra clientes por categoría: 'activos' = con póliza Activa, 'en_proceso' = con póliza pendiente/documentos faltantes, 'perdidos' = cancelados/pre-emisión. Si el asesor pregunta 'cuántos clientes tengo' suele referirse a 'activos'.",
+                        },
                         "incluir": {
                             "type": "array",
                             "items": {"type": "string", "enum": [
@@ -228,6 +233,7 @@ def _dispatch(name: str, args: Dict[str, Any]) -> Any:
             email_cliente=args.get("email_cliente"),
             solo_activas=bool(args.get("solo_activas") or False),
             limite=int(args.get("limite") or 100),
+            filtro_estado=args.get("filtro_estado"),
         )
     if name == "expandir_pagina":
         return nc._resolve_page_full(args.get("page_id", ""))

@@ -166,16 +166,26 @@ def _render_cartera(resultado: Dict[str, Any]) -> str:
     lines: List[str] = ["# Cartera del Asesor — Tomi · Babilonia", ""]
     lines.append(f"**Email asesor:** `{_safe(resultado.get('asesor_email'))}`")
     stats = resultado.get("stats") or {}
-    lines.append(
-        f"**Resumen:** {resultado.get('total_clientes_unicos', 0)} clientes únicos | "
-        f"{resultado.get('total_polizas', 0)} pólizas totales | "
-        f"{resultado.get('total_fondos_distintos', 0)} fondos distintos | "
-        f"⏱ {stats.get('tiempo_ms', 0)} ms"
-    )
+    seg = resultado.get("segmentos") or {}
+    total = resultado.get("total_clientes_unicos", 0)
+    devueltos = resultado.get("total_clientes_devueltos", total)
+    filtro = resultado.get("filtro_estado")
+
+    lines.append("")
+    lines.append(f"## Resumen ejecutivo")
+    lines.append(f"- **Clientes únicos totales:** {total}")
+    lines.append(f"  - 🟢 Activos (con póliza vigente): **{seg.get('activos', 0)}**")
+    lines.append(f"  - 🟡 En proceso (pendientes/documentos): **{seg.get('en_proceso', 0)}**")
+    lines.append(f"  - 🔴 No convertidos (cancelados/pre-emisión): **{seg.get('perdidos', 0)}**")
+    lines.append(f"- **Pólizas totales:** {resultado.get('total_polizas', 0)}")
+    lines.append(f"- **Fondos distintos:** {resultado.get('total_fondos_distintos', 0)}")
+    if filtro:
+        lines.append(f"- **Filtro aplicado:** `{filtro}` → mostrando {devueltos} de {total} clientes.")
+    lines.append(f"- **Latencia:** {stats.get('tiempo_ms', 0)} ms")
     lines.append(
         f"_Trazabilidad: {stats.get('emisiones_crudas_recuperadas', 0)} emisiones crudas → "
         f"{stats.get('buckets_creados', 0)} buckets → "
-        f"{resultado.get('total_clientes_unicos', 0)} clientes únicos deduplicados._"
+        f"{total} clientes únicos deduplicados._"
     )
     lines.append("")
 
@@ -184,35 +194,53 @@ def _render_cartera(resultado: Dict[str, Any]) -> str:
         lines.append("**Sin clientes encontrados** para ese asesor (verificar email o pólizas registradas).")
         return "\n".join(lines)
 
-    lines.append(f"## Clientes ({len(clientes)})")
-    lines.append("")
-    for i, c in enumerate(clientes, 1):
-        nombre = _safe(c.get("nombre"))
-        email = c.get("email") or "—"
-        tel = c.get("telefono") or "—"
-        fondos = c.get("fondos_consolidados") or []
-        lines.append(f"### {i}. {nombre}")
-        lines.append(f"- **Email:** `{email}` | **Teléfono:** `{tel}`")
-        if fondos:
-            lines.append(f"- **Fondos de inversión consolidados:** {', '.join(fondos)}")
-        polizas = c.get("polizas") or []
-        if polizas:
-            lines.append(f"- **Pólizas ({len(polizas)}):**")
-            for p in polizas:
-                num = p.get("numero") or "(sin nº)"
-                prod = _safe(p.get("producto"))
-                prima = _safe(p.get("prima"))
-                period = _safe(p.get("periodicidad"))
-                estado = _safe(p.get("estado"))
-                fecha = _safe(p.get("fecha_emision"))
-                fondos_p = p.get("fondos") or []
-                fondos_str = f" — Fondos: {', '.join(fondos_p)}" if fondos_p else ""
-                url = p.get("url")
-                pol_md = f"[{num}]({url})" if url else num
-                lines.append(
-                    f"  - {pol_md} — **{prod}** — Prima **${prima}** {period} — **{estado}** — Emisión: {fecha}{fondos_str}"
-                )
+    # Agrupar por categoría
+    grupos = {"activo": [], "en_proceso": [], "perdido": []}
+    for c in clientes:
+        grupos.get(c.get("categoria") or "perdido", grupos["perdido"]).append(c)
+
+    secciones = [
+        ("activo", "🟢 Clientes Activos", "Pólizas vigentes ya emitidas."),
+        ("en_proceso", "🟡 Clientes en Proceso", "Pólizas pendientes de pago, emisión o documentos."),
+        ("perdido", "🔴 No Convertidos", "Solicitudes canceladas o que no llegaron a póliza."),
+    ]
+
+    indice_global = 1
+    for cat, titulo, subtitulo in secciones:
+        items = grupos.get(cat, [])
+        if not items:
+            continue
+        lines.append(f"## {titulo} ({len(items)})")
+        lines.append(f"_{subtitulo}_")
         lines.append("")
+        for c in items:
+            nombre = _safe(c.get("nombre"))
+            email = c.get("email") or "—"
+            tel = c.get("telefono") or "—"
+            fondos = c.get("fondos_consolidados") or []
+            lines.append(f"### {indice_global}. {nombre}")
+            indice_global += 1
+            lines.append(f"- **Email:** `{email}` | **Teléfono:** `{tel}`")
+            if fondos:
+                lines.append(f"- **Fondos de inversión consolidados:** {', '.join(fondos)}")
+            polizas = c.get("polizas") or []
+            if polizas:
+                lines.append(f"- **Pólizas ({len(polizas)}):**")
+                for p in polizas:
+                    num = p.get("numero") or "(sin nº)"
+                    prod = _safe(p.get("producto"))
+                    prima = _safe(p.get("prima"))
+                    period = _safe(p.get("periodicidad"))
+                    estado = _safe(p.get("estado"))
+                    fecha = _safe(p.get("fecha_emision"))
+                    fondos_p = p.get("fondos") or []
+                    fondos_str = f" — Fondos: {', '.join(fondos_p)}" if fondos_p else ""
+                    url = p.get("url")
+                    pol_md = f"[{num}]({url})" if url else num
+                    lines.append(
+                        f"  - {pol_md} — **{prod}** — Prima **${prima}** {period} — **{estado}** — Emisión: {fecha}{fondos_str}"
+                    )
+            lines.append("")
 
     return "\n".join(lines)
 

@@ -153,6 +153,7 @@ class BasesDatosIn(BaseModel):
     email_cliente: Optional[str] = None
     solo_activas: bool = False
     limite: int = 100
+    filtro_estado: Optional[str] = Field(default=None, description="(modo cartera) activos|en_proceso|perdidos")
 
 
 @router.post("/bases-datos")
@@ -170,6 +171,7 @@ def bases_datos(body: BasesDatosIn, x_tomi_key: Optional[str] = Header(default=N
         email_cliente=body.email_cliente,
         solo_activas=body.solo_activas,
         limite=body.limite,
+        filtro_estado=body.filtro_estado,
     )
 
 
