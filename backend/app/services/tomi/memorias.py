@@ -28,6 +28,10 @@ log = logging.getLogger("tomi.memorias")
 
 EMBED_MODEL = os.getenv("OPENAI_EMBED_MODEL", "text-embedding-3-small")
 
+# Tabla pgvector donde n8n almacena los chunks. Puede ser "documents",
+# "sandbox.documents", "public.documents", etc.
+DOCUMENTS_TABLE = os.getenv("DOCUMENTS_TABLE", "documents")
+
 CATEGORIAS_VALIDAS = ("plu3", "patrimonial", "proteccion", "auto", "educacion")
 
 # Keywords para clasificación determinística (sin LLM).
@@ -155,7 +159,7 @@ def buscar_chunks(
             content,
             metadata,
             1 - (embedding <=> CAST(:emb AS vector)) AS similarity
-        FROM documents
+        FROM {DOCUMENTS_TABLE}
         {where}
         ORDER BY embedding <=> CAST(:emb AS vector) ASC
         LIMIT :k
@@ -207,9 +211,9 @@ def buscar_multi_categoria(
 
 def listar_categorias_con_datos(db: Session) -> Dict[str, int]:
     """Útil para debug: cuántos chunks hay por categoría en Supabase."""
-    sql = """
+    sql = f"""
         SELECT metadata->>'source' AS categoria, COUNT(*) AS n
-        FROM documents
+        FROM {DOCUMENTS_TABLE}
         GROUP BY metadata->>'source'
         ORDER BY n DESC
     """

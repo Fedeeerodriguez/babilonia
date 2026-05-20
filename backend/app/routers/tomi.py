@@ -240,9 +240,10 @@ def memorias_debug(
     """Debug: cuenta total de filas en `documents` y sample de las primeras 5."""
     _auth(x_tomi_key)
     from sqlalchemy import text
+    from app.services.tomi.memorias import DOCUMENTS_TABLE
     try:
-        total = db.execute(text("SELECT COUNT(*) AS n FROM documents")).scalar()
-        samples = db.execute(text("SELECT id, content, metadata FROM documents LIMIT 5")).mappings().all()
+        total = db.execute(text(f"SELECT COUNT(*) AS n FROM {DOCUMENTS_TABLE}")).scalar()
+        samples = db.execute(text(f"SELECT id, content, metadata FROM {DOCUMENTS_TABLE} LIMIT 5")).mappings().all()
         sample_list = []
         for r in samples:
             md = r["metadata"]
