@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.database import get_db
+from app.database import get_db, get_docs_db
 from app.services.tomi import notion_client as nc
 from app.services.tomi import bases_datos as bd
 from app.services.tomi import agente as ag
@@ -196,7 +196,7 @@ class MemoriasIn(BaseModel):
 @router.post("/memorias")
 def memorias_directa(
     body: MemoriasIn,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_docs_db),
     x_tomi_key: Optional[str] = Header(default=None),
 ):
     """Búsqueda directa en pgvector (sin LLM intermedio). Para tests rápidos."""
@@ -213,7 +213,7 @@ class MemoriasAgenteIn(BaseModel):
 @router.post("/memorias-agente")
 def memorias_agente_llm(
     body: MemoriasAgenteIn,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_docs_db),
     x_tomi_key: Optional[str] = Header(default=None),
 ):
     """Agente LLM que elige categoría y delega en memorias_bd. Devuelve informe verbatim."""
@@ -224,7 +224,7 @@ def memorias_agente_llm(
 
 @router.get("/memorias/categorias")
 def memorias_categorias(
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_docs_db),
     x_tomi_key: Optional[str] = Header(default=None),
 ):
     """Cuántos chunks hay por categoría en Supabase."""
@@ -234,7 +234,7 @@ def memorias_categorias(
 
 @router.get("/memorias/debug")
 def memorias_debug(
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_docs_db),
     x_tomi_key: Optional[str] = Header(default=None),
 ):
     """Debug: cuenta total de filas en `documents` y sample de las primeras 5."""
@@ -265,7 +265,7 @@ def memorias_debug(
 
 @router.get("/memorias/tablas")
 def memorias_listar_tablas(
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_docs_db),
     x_tomi_key: Optional[str] = Header(default=None),
 ):
     """Lista las tablas disponibles en el schema public de la DB conectada.
