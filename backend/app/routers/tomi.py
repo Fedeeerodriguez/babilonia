@@ -17,6 +17,9 @@ from pydantic import BaseModel, Field
 from app.services.tomi import notion_client as nc
 from app.services.tomi import bases_datos as bd
 from app.services.tomi import agente as ag
+from app.services.tomi import memorias as mem
+from app.services.tomi import memorias_bd as mbd
+from app.services.tomi import agente_memorias as ag_mem
 from app.services.tomi.cache import notion_cache
 
 router = APIRouter(prefix="/api/tomi", tags=["tomi"])
@@ -178,6 +181,53 @@ def agente_llm(body: AgenteIn, x_tomi_key: Optional[str] = Header(default=None))
         wa_id=body.wa_id,
         max_iter=body.max_iter,
     )
+
+
+# ---------- Memorias técnicas (sub-agente vector store) ----------
+
+class MemoriasIn(BaseModel):
+    query: str
+    categoria: Optional[str] = Field(default=None, description="plu3|patrimonial|proteccion|auto|educacion")
+    k: int = 5
+
+
+@router.post("/memorias")
+def memorias_directa(
+    body: MemoriasIn,
+    db: Session = Depends(get_db),
+    x_tomi_key: Optional[str] = Header(default=None),
+):
+    """Búsqueda directa en pgvector (sin LLM intermedio). Para tests rápidos."""
+    _auth(x_tomi_key)
+    return mbd.consultar(db, query=body.query, categoria=body.categoria, k=body.k)
+
+
+class MemoriasAgenteIn(BaseModel):
+    mensaje: str
+    historial: Optional[List[HistMsg]] = None
+    max_iter: int = 4
+
+
+@router.post("/memorias-agente")
+def memorias_agente_llm(
+    body: MemoriasAgenteIn,
+    db: Session = Depends(get_db),
+    x_tomi_key: Optional[str] = Header(default=None),
+):
+    """Agente LLM que elige categoría y delega en memorias_bd. Devuelve informe verbatim."""
+    _auth(x_tomi_key)
+    hist = [{"role": h.role, "content": h.content} for h in (body.historial or [])]
+    return ag_mem.responder(db, mensaje=body.mensaje, historial=hist, max_iter=body.max_iter)
+
+
+@router.get("/memorias/categorias")
+def memorias_categorias(
+    db: Session = Depends(get_db),
+    x_tomi_key: Optional[str] = Header(default=None),
+):
+    """Cuántos chunks hay por categoría en Supabase."""
+    _auth(x_tomi_key)
+    return {"categorias": mem.listar_categorias_con_datos(db)}
 
 
 # ---------- Cache management ----------
