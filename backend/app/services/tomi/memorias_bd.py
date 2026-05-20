@@ -126,14 +126,29 @@ def consultar(
             c2 = {**c, "_categoria_consultada": cat}
             all_chunks.append(c2)
     all_chunks.sort(key=lambda c: -c.get("similarity", 0))
-    # Dedupe por id de chunk
-    seen = set()
+    # Dedupe doble: por id y por content_hash (la DB tiene duplicados del mismo texto)
+    import hashlib
+    seen_ids: set = set()
+    seen_content: set = set()
     chunks_unicos: List[Dict[str, Any]] = []
+    duplicados_por_contenido = 0
     for c in all_chunks:
-        if c["id"] in seen:
+        if c["id"] in seen_ids:
             continue
-        seen.add(c["id"])
+        ch = hashlib.sha1((c.get("content") or "").strip().encode("utf-8")).hexdigest()
+        if ch in seen_content:
+            duplicados_por_contenido += 1
+            continue
+        seen_ids.add(c["id"])
+        seen_content.add(ch)
         chunks_unicos.append(c)
+    if duplicados_por_contenido > 0:
+        advertencias.append({
+            "severidad": "info",
+            "tipo": "chunks_duplicados",
+            "mensaje": f"Se filtraron {duplicados_por_contenido} chunk(s) con contenido idéntico (data sucia en Notion).",
+            "sugerencia": "Considerar recargar las memorias con dedupe en el ingest para no tener repetidos.",
+        })
 
     # 4. Advertencias si no hubo resultados
     if not chunks_unicos:
