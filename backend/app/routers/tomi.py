@@ -263,6 +263,27 @@ def memorias_debug(
         return {"error": str(e)}
 
 
+@router.get("/memorias/tablas")
+def memorias_listar_tablas(
+    db: Session = Depends(get_db),
+    x_tomi_key: Optional[str] = Header(default=None),
+):
+    """Lista las tablas disponibles en el schema public de la DB conectada.
+    Útil para detectar el nombre real de la tabla de vectores."""
+    _auth(x_tomi_key)
+    from sqlalchemy import text
+    try:
+        rows = db.execute(text("""
+            SELECT table_schema, table_name
+            FROM information_schema.tables
+            WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
+            ORDER BY table_schema, table_name
+        """)).mappings().all()
+        return {"tablas": [{"schema": r["table_schema"], "table": r["table_name"]} for r in rows]}
+    except Exception as e:
+        return {"error": str(e)}
+
+
 # ---------- Cache management ----------
 
 @router.get("/cache/stats")
