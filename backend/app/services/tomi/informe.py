@@ -161,11 +161,71 @@ def _render_usuario_prospecto(u: Dict[str, Any]) -> List[str]:
     ]
 
 
+def _render_cartera(resultado: Dict[str, Any]) -> str:
+    """Renderer especial para modo=cartera: clientes únicos con sus pólizas y fondos."""
+    lines: List[str] = ["# Cartera del Asesor — Tomi · Babilonia", ""]
+    lines.append(f"**Email asesor:** `{_safe(resultado.get('asesor_email'))}`")
+    stats = resultado.get("stats") or {}
+    lines.append(
+        f"**Resumen:** {resultado.get('total_clientes_unicos', 0)} clientes únicos | "
+        f"{resultado.get('total_polizas', 0)} pólizas totales | "
+        f"{resultado.get('total_fondos_distintos', 0)} fondos distintos | "
+        f"⏱ {stats.get('tiempo_ms', 0)} ms"
+    )
+    lines.append(
+        f"_Trazabilidad: {stats.get('emisiones_crudas_recuperadas', 0)} emisiones crudas → "
+        f"{stats.get('buckets_creados', 0)} buckets → "
+        f"{resultado.get('total_clientes_unicos', 0)} clientes únicos deduplicados._"
+    )
+    lines.append("")
+
+    clientes = resultado.get("clientes") or []
+    if not clientes:
+        lines.append("**Sin clientes encontrados** para ese asesor (verificar email o pólizas registradas).")
+        return "\n".join(lines)
+
+    lines.append(f"## Clientes ({len(clientes)})")
+    lines.append("")
+    for i, c in enumerate(clientes, 1):
+        nombre = _safe(c.get("nombre"))
+        email = c.get("email") or "—"
+        tel = c.get("telefono") or "—"
+        fondos = c.get("fondos_consolidados") or []
+        lines.append(f"### {i}. {nombre}")
+        lines.append(f"- **Email:** `{email}` | **Teléfono:** `{tel}`")
+        if fondos:
+            lines.append(f"- **Fondos de inversión consolidados:** {', '.join(fondos)}")
+        polizas = c.get("polizas") or []
+        if polizas:
+            lines.append(f"- **Pólizas ({len(polizas)}):**")
+            for p in polizas:
+                num = p.get("numero") or "(sin nº)"
+                prod = _safe(p.get("producto"))
+                prima = _safe(p.get("prima"))
+                period = _safe(p.get("periodicidad"))
+                estado = _safe(p.get("estado"))
+                fecha = _safe(p.get("fecha_emision"))
+                fondos_p = p.get("fondos") or []
+                fondos_str = f" — Fondos: {', '.join(fondos_p)}" if fondos_p else ""
+                url = p.get("url")
+                pol_md = f"[{num}]({url})" if url else num
+                lines.append(
+                    f"  - {pol_md} — **{prod}** — Prima **${prima}** {period} — **{estado}** — Emisión: {fecha}{fondos_str}"
+                )
+        lines.append("")
+
+    return "\n".join(lines)
+
+
 def renderizar(resultado: Dict[str, Any]) -> str:
     """Genera markdown determinístico desde el resultado de bd.consultar().
 
     NO usa LLM. Todos los valores salen verbatim del dict.
     """
+    # Renderer especial para modo cartera
+    if resultado.get("modo") == "cartera":
+        return _render_cartera(resultado)
+
     lines: List[str] = ["# Informe de bases de datos — Tomi · Babilonia", ""]
 
     # Entidades identificadas

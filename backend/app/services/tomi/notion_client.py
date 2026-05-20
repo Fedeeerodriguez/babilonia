@@ -48,6 +48,7 @@ DB_CLIENTES_PROTECCION = os.getenv("NOTION_DB_CLIENTES_PROTECCION", "")
 DB_CLIENTES_ELITE = os.getenv("NOTION_DB_CLIENTES_ELITE", "")
 DB_CLIENTES_PLU3 = os.getenv("NOTION_DB_CLIENTES_PLU3", "")
 DB_MIGRACION_CLIENTES = os.getenv("NOTION_DB_MIGRACION_CLIENTES", "")
+DB_PORTAFOLIOS = os.getenv("NOTION_DB_PORTAFOLIOS", "")
 
 # Mapeo nombre amigable -> DB ID, usado por endpoint debug y búsqueda multi-DB
 SUB_DBS_CLIENTES: Dict[str, str] = {
@@ -505,6 +506,55 @@ def eventos_calendly_de_asesor(asesor_id: str, page_size: int = 100) -> List[Dic
         {"property": "Asesores", "relation": {"contains": asesor_id}},
         page_size=page_size,
     )
+
+
+def emisiones_por_correo_asesor(email_asesor: str, page_size: int = 100) -> List[Dict[str, Any]]:
+    """Emisiones (todos los productos: PLU3, VIPP, GMM, Auto, etc.) donde
+    el campo Correo Asesor contiene el email indicado (case-insensitive)."""
+    if not email_asesor:
+        return []
+    e_norm = email_asesor.strip().lower()
+    # Buscamos contains case-insensitive haciendo 2 variantes (lower y upper).
+    # Notion rich_text contains es case-insensitive en práctica pero algunos
+    # registros guardan ZULEMAROMERO37@GMAIL.COM en mayúscula.
+    return _query(
+        DB_EMISIONES,
+        {"property": "Correo Asesor", "rich_text": {"contains": e_norm}},
+        page_size=page_size,
+    )
+
+
+def emisiones_por_correo_cliente(email_cliente: str, page_size: int = 100) -> List[Dict[str, Any]]:
+    """Emisiones donde Correo Cliente contiene el email indicado."""
+    if not email_cliente:
+        return []
+    return _query(
+        DB_EMISIONES,
+        {"property": "Correo Cliente", "rich_text": {"contains": email_cliente.strip().lower()}},
+        page_size=page_size,
+    )
+
+
+def resolver_portafolios(portafolio_ids: List[str], max_workers: int = 4) -> Dict[str, str]:
+    """Resuelve N IDs de portafolios a {id: nombre}. Usa el resolver con caché.
+
+    Devuelve dict {page_id: nombre_fondo} (ej. {'abc...': 'Nasdaq 100'}).
+    """
+    portafolio_ids = [p for p in (portafolio_ids or []) if isinstance(p, str) and len(p) >= 32]
+    if not portafolio_ids:
+        return {}
+    out: Dict[str, str] = {}
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=max_workers) as ex:
+        futs = {ex.submit(_resolve_page_id, pid): pid for pid in portafolio_ids}
+        for fut in futs:
+            pid = futs[fut]
+            try:
+                page = fut.result(timeout=15)
+                out[pid] = page.get("name") or "(sin nombre)"
+            except Exception:
+                out[pid] = "(error)"
+    return out
 
 
 # ---------- Agregaciones cross-relacion (UNIÓN exacta, deduplicada) ----------

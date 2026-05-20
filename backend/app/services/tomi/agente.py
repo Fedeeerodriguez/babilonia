@@ -83,7 +83,16 @@ Elegí el más acotado posible — traer todo (modo="completo") es caro y ruidos
    USAR para: "pólizas de X", "qué seguros tiene Y", "emisiones del asesor Z".
 
 - `clientes` → Datos básicos + lista de clientes del asesor (sin emisiones).
-   USAR para: "clientes de X", "cuántos clientes tiene Y", "cartera del asesor Z".
+   USAR para: "clientes de X" (rápido sin detalle de pólizas).
+
+- `cartera` → **MODO PREMIUM** para análisis de cartera de un asesor.
+   Hace lo siguiente automáticamente:
+   1. Trae TODAS las emisiones del asesor (PLU3 + VIPP + GMM + Auto + Patrimonial).
+   2. Agrupa por correo del cliente — deduplica una misma persona que tiene varios productos.
+   3. Para cada cliente, dedupe sus pólizas (si una póliza aparece 2 veces, prevalece la activa).
+   4. Resuelve fondos de inversión (Portafolios) por cada póliza.
+   USAR para: "cartera de X", "clientes y fondos del asesor", "qué productos tiene cada cliente de Y".
+   REQUIERE: `email_asesor`. Sin email, no funciona — el modo necesita un correo concreto.
 
 - `cobranzas` → Solo cobranzas filtradas por póliza.
    USAR para: "cuándo paga X", "saldo de PLU3-XXX", "próximo cobro".
@@ -132,7 +141,7 @@ def _tools_schema() -> List[Dict[str, Any]]:
                         },
                         "modo": {
                             "type": "string",
-                            "enum": ["perfil", "polizas", "clientes", "cobranzas", "eventos", "completo"],
+                            "enum": ["perfil", "polizas", "clientes", "cobranzas", "eventos", "completo", "cartera"],
                             "description": "QUÉ devolver. 'perfil'=solo datos básicos, 'polizas'=+emisiones, 'clientes'=+cartera, 'cobranzas'=solo cobranzas, 'eventos'=+calendly, 'completo'=todo (caro). USAR el más acotado posible.",
                         },
                         "email_asesor": {

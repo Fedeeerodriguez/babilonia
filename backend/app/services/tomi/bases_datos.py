@@ -68,7 +68,154 @@ def _detectar_intents(mensaje: str) -> Dict[str, bool]:
     }
 
 
-MODOS_VALIDOS = ("perfil", "polizas", "clientes", "cobranzas", "eventos", "completo")
+MODOS_VALIDOS = ("perfil", "polizas", "clientes", "cobranzas", "eventos", "completo", "cartera")
+
+# Orden de relevancia de estados — usado para elegir la mejor emisión cuando hay duplicados
+_ESTADO_PRIORIDAD = {
+    "Activa": 0,
+    "Pagada – Pendiente de Emisión": 1,
+    "Aprobada – Pendiente de Pago": 2,
+    "Cliente Firmando": 3,
+    "Cliente en Biométrico": 4,
+    "Por subir a Portal": 5,
+    "En Autorización": 6,
+    "Documentos Faltantes": 7,
+    "Cancelada": 8,
+    "Cancelación Pre-Emisión": 9,
+}
+
+
+def _prioridad_estado(estado: Optional[str]) -> int:
+    return _ESTADO_PRIORIDAD.get(estado or "", 99)
+
+
+def cartera_de_asesor(email_asesor: str) -> Dict[str, Any]:
+    """Construye la cartera deduplicada de un asesor.
+
+    Algoritmo:
+    1. Query Emisiones por Correo Asesor (case-insensitive).
+    2. Bucket por Correo Cliente (lowercase). Si no hay correo, fallback nombre+teléfono.
+    3. Dentro de cada cliente, dedupe pólizas por Número de Póliza (o Solicitud si vacío).
+       Si hay duplicados, prevalece el mejor estado (Activa > Pendiente > Cancelada).
+    4. Resuelve Portafolios relation de cada póliza a nombres de fondos.
+    5. Devuelve cartera estructurada.
+    """
+    if not email_asesor:
+        return {"asesor_email": None, "total_clientes_unicos": 0, "total_polizas": 0, "clientes": []}
+
+    emisiones = nc.emisiones_por_correo_asesor(email_asesor, page_size=200)
+
+    # 1. Bucket por correo cliente
+    buckets: Dict[str, List[Dict[str, Any]]] = {}
+    sin_correo: List[Dict[str, Any]] = []
+    for e in emisiones:
+        correo = (e.get("Correo Cliente") or "").strip().lower()
+        if correo:
+            buckets.setdefault(correo, []).append(e)
+        else:
+            # Fallback: agrupar por (nombre normalizado + teléfono)
+            nombre = (e.get("Nombre Cliente") or e.get("_title") or "").strip().lower()
+            tel = (e.get("Teléfono Cliente") or "").strip()
+            key = f"_sin_correo::{nombre}::{tel}"
+            buckets.setdefault(key, []).append(e)
+
+    # 2. Recolectar todos los IDs de portafolios para resolver en una sola pasada
+    portafolio_ids: set = set()
+    for emisiones_list in buckets.values():
+        for e in emisiones_list:
+            for pid in (e.get("Portafolios") or []):
+                if isinstance(pid, str) and len(pid) >= 32:
+                    portafolio_ids.add(pid)
+
+    portafolios_map: Dict[str, str] = {}
+    if portafolio_ids:
+        try:
+            portafolios_map = nc.resolver_portafolios(list(portafolio_ids))
+        except Exception as e:
+            log.error("resolver_portafolios falló: %s", e)
+
+    # 3. Construir lista de clientes
+    clientes_out: List[Dict[str, Any]] = []
+    total_polizas = 0
+
+    for key, emis_cliente in buckets.items():
+        # Datos del cliente — tomar de la emisión más reciente (mejor estado)
+        emis_cliente_sorted = sorted(
+            emis_cliente,
+            key=lambda x: (_prioridad_estado(x.get("Estado")), -(int(((x.get("Fecha de Emisión") or {}).get("start") or "0000-00-00").replace("-", "")[:8]) if isinstance(x.get("Fecha de Emisión"), dict) else 0))
+        )
+        primera = emis_cliente_sorted[0]
+        nombre = primera.get("Nombre Cliente") or "(sin nombre)"
+        email_cli = primera.get("Correo Cliente") or ""
+        tel_cli = primera.get("Teléfono Cliente") or ""
+
+        # 3a. Dedupe pólizas dentro del cliente
+        polizas_unicas: Dict[str, Dict[str, Any]] = {}
+        for e in emis_cliente:
+            num = (e.get("Número de Póliza") or "").strip()
+            sol = (e.get("Solicitud") or "").strip()
+            poliza_key = num if num else f"_sol::{sol}"
+            actual = polizas_unicas.get(poliza_key)
+            if not actual:
+                polizas_unicas[poliza_key] = e
+            else:
+                # Reemplazar si la nueva tiene mejor estado
+                if _prioridad_estado(e.get("Estado")) < _prioridad_estado(actual.get("Estado")):
+                    polizas_unicas[poliza_key] = e
+
+        # 3b. Construir lista de pólizas con fondos resueltos
+        polizas_list: List[Dict[str, Any]] = []
+        fondos_consolidados: set = set()
+        for e in polizas_unicas.values():
+            fondos_ids = [p for p in (e.get("Portafolios") or []) if isinstance(p, str)]
+            fondos_nombres = [portafolios_map.get(pid, "(no resuelto)") for pid in fondos_ids]
+            for f in fondos_nombres:
+                if f and f != "(no resuelto)":
+                    fondos_consolidados.add(f)
+            polizas_list.append({
+                "numero": e.get("Número de Póliza") or None,
+                "solicitud": e.get("Solicitud"),
+                "producto": e.get("Producto (nombre)"),
+                "prima": e.get("Prima"),
+                "periodicidad": e.get("Periodicidad"),
+                "valor_plan": e.get("Valor Plan"),
+                "plazo": e.get("Plazo Comprometido"),
+                "estado": e.get("Estado"),
+                "fecha_emision": (e.get("Fecha de Emisión") or {}).get("start") if isinstance(e.get("Fecha de Emisión"), dict) else None,
+                "fecha_cobro_original": (e.get("Fecha de Cobro Original") or {}).get("start") if isinstance(e.get("Fecha de Cobro Original"), dict) else None,
+                "conducto_cobro": e.get("Conducto de cobro"),
+                "fondos": fondos_nombres,
+                "url": e.get("_url"),
+            })
+        # Sort pólizas por (prioridad estado, fecha emisión DESC)
+        polizas_list.sort(key=lambda p: (_prioridad_estado(p.get("estado")), -(int((p.get("fecha_emision") or "0000-00-00").replace("-", "")[:8]) if p.get("fecha_emision") else 0)))
+
+        total_polizas += len(polizas_list)
+        clientes_out.append({
+            "email": email_cli or None,
+            "nombre": nombre,
+            "telefono": tel_cli or None,
+            "polizas": polizas_list,
+            "total_polizas": len(polizas_list),
+            "fondos_consolidados": sorted(fondos_consolidados),
+            "_key": key,
+        })
+
+    # 4. Ordenar clientes por cantidad de pólizas DESC, luego por nombre
+    clientes_out.sort(key=lambda c: (-c["total_polizas"], (c["nombre"] or "").lower()))
+
+    return {
+        "asesor_email": email_asesor,
+        "total_clientes_unicos": len(clientes_out),
+        "total_polizas": total_polizas,
+        "total_fondos_distintos": len({f for c in clientes_out for f in c["fondos_consolidados"]}),
+        "clientes": clientes_out,
+        "stats": {
+            "emisiones_crudas_recuperadas": len(emisiones),
+            "buckets_creados": len(buckets),
+            "portafolios_resueltos": len(portafolios_map),
+        },
+    }
 
 
 def consultar(
@@ -103,6 +250,15 @@ def consultar(
 
     if modo not in MODOS_VALIDOS:
         modo = "completo"
+
+    # ATAJO especial: si modo=cartera y tenemos email_asesor, ejecutar la pipeline
+    # dedicada y retornar directo (no pasa por la maquinaria de búsqueda general).
+    if modo == "cartera" and email_asesor:
+        t_c0 = time.time()
+        cartera = cartera_de_asesor(email_asesor)
+        cartera["modo"] = "cartera"
+        cartera["stats"]["tiempo_ms"] = int((time.time() - t_c0) * 1000)
+        return cartera
 
     # 1. Combinar listas explícitas + extracción regex + email_asesor/cliente
     emails_in = list(emails or [])

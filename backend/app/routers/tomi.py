@@ -147,7 +147,7 @@ class BasesDatosIn(BaseModel):
     # Modos y filtros
     modo: str = Field(
         default="completo",
-        description="perfil|polizas|clientes|cobranzas|eventos|completo",
+        description="perfil|polizas|clientes|cobranzas|eventos|completo|cartera",
     )
     email_asesor: Optional[str] = None
     email_cliente: Optional[str] = None
