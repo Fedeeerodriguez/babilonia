@@ -11,9 +11,11 @@ from __future__ import annotations
 import os
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 
+from app.database import get_db
 from app.services.tomi import notion_client as nc
 from app.services.tomi import bases_datos as bd
 from app.services.tomi import agente as ag
