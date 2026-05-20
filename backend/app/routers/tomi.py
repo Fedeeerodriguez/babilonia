@@ -232,6 +232,37 @@ def memorias_categorias(
     return {"categorias": mem.listar_categorias_con_datos(db)}
 
 
+@router.get("/memorias/debug")
+def memorias_debug(
+    db: Session = Depends(get_db),
+    x_tomi_key: Optional[str] = Header(default=None),
+):
+    """Debug: cuenta total de filas en `documents` y sample de las primeras 5."""
+    _auth(x_tomi_key)
+    from sqlalchemy import text
+    try:
+        total = db.execute(text("SELECT COUNT(*) AS n FROM documents")).scalar()
+        samples = db.execute(text("SELECT id, content, metadata FROM documents LIMIT 5")).mappings().all()
+        sample_list = []
+        for r in samples:
+            md = r["metadata"]
+            if isinstance(md, str):
+                import json as _j
+                try:
+                    md = _j.loads(md)
+                except Exception:
+                    md = {"_raw": md[:200]}
+            sample_list.append({
+                "id": str(r["id"]),
+                "content_preview": (r["content"] or "")[:200],
+                "metadata": md,
+                "metadata_keys": list(md.keys()) if isinstance(md, dict) else None,
+            })
+        return {"total_rows": total, "sample": sample_list}
+    except Exception as e:
+        return {"error": str(e)}
+
+
 # ---------- Cache management ----------
 
 @router.get("/cache/stats")
