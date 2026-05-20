@@ -142,8 +142,17 @@ class BasesDatosIn(BaseModel):
     incluir: Optional[List[str]] = Field(
         default=None,
         description=("Subset de: usuarios|emisiones|cobranzas|tickets_allianz|calendly|"
-                     "clientes_por_nombre|asesores_por_nombre. Si null, se infiere del mensaje."),
+                     "clientes_por_nombre|asesores_por_nombre. Si null, se infiere del modo."),
     )
+    # Modos y filtros
+    modo: str = Field(
+        default="completo",
+        description="perfil|polizas|clientes|cobranzas|eventos|completo",
+    )
+    email_asesor: Optional[str] = None
+    email_cliente: Optional[str] = None
+    solo_activas: bool = False
+    limite: int = 100
 
 
 @router.post("/bases-datos")
@@ -156,6 +165,11 @@ def bases_datos(body: BasesDatosIn, x_tomi_key: Optional[str] = Header(default=N
         clientes=body.clientes,
         asesores=body.asesores,
         incluir=body.incluir,
+        modo=body.modo,
+        email_asesor=body.email_asesor,
+        email_cliente=body.email_cliente,
+        solo_activas=body.solo_activas,
+        limite=body.limite,
     )
 
 

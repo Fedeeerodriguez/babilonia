@@ -68,6 +68,9 @@ def _detectar_intents(mensaje: str) -> Dict[str, bool]:
     }
 
 
+MODOS_VALIDOS = ("perfil", "polizas", "clientes", "cobranzas", "eventos", "completo")
+
+
 def consultar(
     mensaje: str = "",
     emails: Optional[List[str]] = None,
@@ -75,12 +78,38 @@ def consultar(
     clientes: Optional[List[str]] = None,
     asesores: Optional[List[str]] = None,
     incluir: Optional[List[str]] = None,
+    # nuevos params
+    modo: str = "completo",
+    email_asesor: Optional[str] = None,
+    email_cliente: Optional[str] = None,
+    solo_activas: bool = False,
+    limite: int = 100,
 ) -> Dict[str, Any]:
-    """Orquesta las búsquedas en paralelo y devuelve el JSON estructurado."""
+    """Orquesta las búsquedas en paralelo y devuelve el JSON estructurado.
+
+    Args:
+        modo: "perfil" (solo datos básicos del usuario sin expandido pesado),
+              "polizas" (foco en emisiones del cliente/asesor),
+              "clientes" (lista de clientes del asesor, sin emisiones),
+              "cobranzas" (solo cobranzas por póliza),
+              "eventos" (solo calendly),
+              "completo" (todo, comportamiento legacy — usar solo si necesitás panorama total).
+        email_asesor: email que SABÉS que pertenece a un asesor. Acelera y evita auto-clasificar.
+        email_cliente: email que SABÉS que pertenece a un cliente.
+        solo_activas: si True, filtra emisiones con Estado == "Activa".
+        limite: cap superior por categoría (default 100).
+    """
     t0 = time.time()
 
-    # 1. Combinar listas explícitas + extracción regex
+    if modo not in MODOS_VALIDOS:
+        modo = "completo"
+
+    # 1. Combinar listas explícitas + extracción regex + email_asesor/cliente
     emails_in = list(emails or [])
+    if email_asesor:
+        emails_in.append(email_asesor)
+    if email_cliente:
+        emails_in.append(email_cliente)
     polizas_in = list(polizas or [])
     clientes_in = list(clientes or [])
     asesores_in = list(asesores or [])
@@ -98,22 +127,38 @@ def consultar(
 
     intents = _detectar_intents(mensaje)
 
-    # Qué consultas correr: si viene "incluir", respetar; sino, inferir
-    if incluir is None:
-        incluir_set = {"usuarios", "emisiones"}
-        if clientes_uniq:
-            incluir_set.add("clientes_por_nombre")
-        if asesores_uniq:
-            incluir_set.add("asesores_por_nombre")
-            incluir_set.add("calendly")  # si pregunta por asesor, traer sus eventos
-        if polizas_uniq or intents["cobranza"]:
-            incluir_set.add("cobranzas")
-        if intents["tickets"]:
-            incluir_set.add("tickets_allianz")
-        if intents["calendly"]:
-            incluir_set.add("calendly")
-    else:
+    # 2. Definir incluir_set según modo
+    if incluir is not None:
+        # Si el caller mandó incluir explícito, lo respetamos
         incluir_set = set(incluir)
+    else:
+        if modo == "perfil":
+            incluir_set = {"usuarios"}
+        elif modo == "polizas":
+            incluir_set = {"usuarios", "emisiones"}
+            if polizas_uniq:
+                incluir_set.add("cobranzas")
+        elif modo == "clientes":
+            incluir_set = {"usuarios"}  # los clientes se expanden en usuarios.expandido si es asesor
+        elif modo == "cobranzas":
+            incluir_set = {"cobranzas"}
+            if emails_uniq or asesores_uniq:
+                incluir_set.add("usuarios")
+        elif modo == "eventos":
+            incluir_set = {"usuarios", "calendly"}
+        else:  # completo
+            incluir_set = {"usuarios", "emisiones"}
+            if clientes_uniq:
+                incluir_set.add("clientes_por_nombre")
+            if asesores_uniq:
+                incluir_set.add("asesores_por_nombre")
+                incluir_set.add("calendly")
+            if polizas_uniq or intents["cobranza"]:
+                incluir_set.add("cobranzas")
+            if intents["tickets"]:
+                incluir_set.add("tickets_allianz")
+            if intents["calendly"]:
+                incluir_set.add("calendly")
 
     # 2. Primera ola de queries (sin dependencias)
     tasks: Dict[str, Any] = {}
@@ -199,36 +244,49 @@ def consultar(
 
             uid = data.get("_id")
             if tipo == "asesor" and uid:
-                # Agregación COMPLETA: union forward (record) + backward (queries)
-                try:
-                    clientes_agg = nc.clientes_completos_de_asesor(data)
-                    queries_count += 1
-                    exp["clientes"] = clientes_agg["lista_completa"]
-                    exp["total_clientes"] = clientes_agg["total_unico"]
-                    exp["clientes_por_fuente"] = clientes_agg["por_fuente"]
-                except Exception as e:
-                    log.error("clientes_completos_de_asesor falló: %s", e)
-                try:
-                    emis_agg = nc.emisiones_completas_de_asesor(data)
-                    queries_count += 1
-                    exp["emisiones"] = emis_agg["lista_completa"]
-                    exp["total_emisiones"] = emis_agg["total_unico"]
-                except Exception as e:
-                    log.error("emisiones_completas_de_asesor falló: %s", e)
-                try:
-                    eventos = nc.eventos_calendly_de_asesor(uid)
-                    queries_count += 1
-                    exp["eventos_calendly"] = [{
-                        "evento": e_.get("Evento ") or e_.get("Tipo de Evento"),
-                        "fecha": (e_.get("Fecha de Evento") or {}).get("start"),
-                        "invitado": e_.get("Nombre del invitado"),
-                        "correo_invitado": e_.get("Correo invitado"),
-                        "estado": e_.get("Estado"),
-                        "url": e_.get("_url"),
-                    } for e_ in eventos]
-                    exp["total_eventos"] = len(exp["eventos_calendly"])
-                except Exception as e:
-                    log.error("eventos_de_asesor falló: %s", e)
+                # Decisión por modo: qué expansiones disparar
+                expandir_clientes = modo in ("completo", "clientes")
+                expandir_emisiones = modo in ("completo", "polizas")
+                expandir_eventos = modo in ("completo", "eventos")
+
+                if expandir_clientes:
+                    try:
+                        clientes_agg = nc.clientes_completos_de_asesor(data)
+                        queries_count += 1
+                        exp["clientes"] = clientes_agg["lista_completa"][:limite]
+                        exp["total_clientes"] = clientes_agg["total_unico"]
+                        exp["clientes_por_fuente"] = clientes_agg["por_fuente"]
+                        if clientes_agg["total_unico"] > limite:
+                            exp["_clientes_truncados"] = True
+                    except Exception as e:
+                        log.error("clientes_completos_de_asesor falló: %s", e)
+                if expandir_emisiones:
+                    try:
+                        emis_agg = nc.emisiones_completas_de_asesor(data)
+                        queries_count += 1
+                        emisiones_data = emis_agg["lista_completa"]
+                        if solo_activas:
+                            emisiones_data = [e for e in emisiones_data if e.get("estado") == "Activa"]
+                        exp["emisiones"] = emisiones_data[:limite]
+                        exp["total_emisiones"] = len(emisiones_data)
+                    except Exception as e:
+                        log.error("emisiones_completas_de_asesor falló: %s", e)
+                if expandir_eventos:
+                    try:
+                        eventos = nc.eventos_calendly_de_asesor(uid)
+                        queries_count += 1
+                        ev_list = [{
+                            "evento": e_.get("Evento ") or e_.get("Tipo de Evento"),
+                            "fecha": (e_.get("Fecha de Evento") or {}).get("start"),
+                            "invitado": e_.get("Nombre del invitado"),
+                            "correo_invitado": e_.get("Correo invitado"),
+                            "estado": e_.get("Estado"),
+                            "url": e_.get("_url"),
+                        } for e_ in eventos]
+                        exp["eventos_calendly"] = ev_list[:limite]
+                        exp["total_eventos"] = len(ev_list)
+                    except Exception as e:
+                        log.error("eventos_de_asesor falló: %s", e)
 
             elif tipo == "cliente" and uid:
                 # Su asesor: usar pages.retrieve sobre el ID de relation
@@ -339,6 +397,11 @@ def consultar(
 
     emisiones = results.get("emisiones", []) or []
     cobranzas = results.get("cobranzas", []) or []
+    # Aplicar filtros adicionales (solo_activas + límite)
+    if solo_activas:
+        emisiones = [e for e in emisiones if e.get("Estado") == "Activa"]
+    emisiones = emisiones[:limite]
+    cobranzas = cobranzas[:limite]
 
     # Pólizas no encontradas: las que se pidieron y no aparecen en emisiones+cobranzas
     pols_encontradas = set()

@@ -71,6 +71,34 @@ ESTRATEGIA:
 TU ÚNICO TRABAJO ES ELEGIR LAS TOOLS Y SUS ARGUMENTOS. El informe final lo
 genera Python desde los datos crudos — vos NO escribís texto narrativo.
 
+REGLA CRÍTICA — ELEGIR EL MODO CORRECTO:
+La tool `consultar_bases` tiene un parámetro `modo` que controla cuánta data devuelve.
+Elegí el más acotado posible — traer todo (modo="completo") es caro y ruidoso.
+
+- `perfil` → Solo datos básicos del usuario (nombre, email, tel, role, stats).
+   USAR para: "¿quién es X?", "info de contacto de Y", "datos del asesor Z".
+   NO trae clientes, NO trae emisiones, NO trae eventos.
+
+- `polizas` → Datos básicos + emisiones del cliente/asesor.
+   USAR para: "pólizas de X", "qué seguros tiene Y", "emisiones del asesor Z".
+
+- `clientes` → Datos básicos + lista de clientes del asesor (sin emisiones).
+   USAR para: "clientes de X", "cuántos clientes tiene Y", "cartera del asesor Z".
+
+- `cobranzas` → Solo cobranzas filtradas por póliza.
+   USAR para: "cuándo paga X", "saldo de PLU3-XXX", "próximo cobro".
+
+- `eventos` → Datos básicos + eventos Calendly.
+   USAR para: "agenda de X", "próxima cita", "eventos del asesor Z".
+
+- `completo` → TODO. SOLO si el usuario pide explícitamente panorama completo.
+
+FILTROS ADICIONALES:
+- `email_asesor` y `email_cliente`: si SABÉS de antemano que un email pertenece a un
+  asesor o a un cliente, pasalo en el campo específico — más rápido y preciso.
+- `solo_activas`: true para filtrar solo emisiones con estado Activa.
+- `limite`: cap superior por categoría (default 100, bajalo si solo querés top N).
+
 Después de hacer los tool calls que necesites, devolvé un mensaje muy breve
 explicando QUÉ buscaste (no listes los resultados — eso lo hace Python).
 Ejemplo: "Listo. Busqué a Jimena por email y traje sus clientes, emisiones y eventos."
@@ -100,27 +128,48 @@ def _tools_schema() -> List[Dict[str, Any]]:
                     "properties": {
                         "mensaje": {
                             "type": "string",
-                            "description": "Texto libre del usuario. Python aplica regex para extraer emails, pólizas y nombres.",
+                            "description": "Consulta enriquecida con contexto. Python extrae emails/pólizas/nombres por regex pero conviene pasarlos explícitos abajo.",
+                        },
+                        "modo": {
+                            "type": "string",
+                            "enum": ["perfil", "polizas", "clientes", "cobranzas", "eventos", "completo"],
+                            "description": "QUÉ devolver. 'perfil'=solo datos básicos, 'polizas'=+emisiones, 'clientes'=+cartera, 'cobranzas'=solo cobranzas, 'eventos'=+calendly, 'completo'=todo (caro). USAR el más acotado posible.",
+                        },
+                        "email_asesor": {
+                            "type": "string",
+                            "description": "Email que SABÉS pertenece a un asesor. Acelera y evita auto-clasificar.",
+                        },
+                        "email_cliente": {
+                            "type": "string",
+                            "description": "Email que SABÉS pertenece a un cliente final.",
                         },
                         "emails": {
                             "type": "array",
                             "items": {"type": "string"},
-                            "description": "Emails a buscar (suma a los que regex extraiga del mensaje).",
+                            "description": "Emails sin clasificar (Python clasifica). Solo si NO sabés si es asesor o cliente.",
                         },
                         "polizas": {
                             "type": "array",
                             "items": {"type": "string"},
-                            "description": "Números de póliza tipo Plus3-403328, PLU3-408444.",
+                            "description": "Números de póliza tipo PLU3-XXX, VIPP-XXX.",
                         },
                         "clientes": {
                             "type": "array",
                             "items": {"type": "string"},
-                            "description": "Nombres de clientes (no emails) — busca en Clientes General + Emisiones.",
+                            "description": "Nombres de clientes (no emails).",
                         },
                         "asesores": {
                             "type": "array",
                             "items": {"type": "string"},
-                            "description": "Nombres de asesores — busca en Asesores y filtra Calendly.",
+                            "description": "Nombres de asesores.",
+                        },
+                        "solo_activas": {
+                            "type": "boolean",
+                            "description": "True para filtrar emisiones con Estado == Activa (descarta canceladas/pendientes).",
+                        },
+                        "limite": {
+                            "type": "integer",
+                            "description": "Cap superior por categoría (default 100). Bajá a 10-20 para top results.",
                         },
                         "incluir": {
                             "type": "array",
@@ -128,10 +177,10 @@ def _tools_schema() -> List[Dict[str, Any]]:
                                 "usuarios", "emisiones", "cobranzas", "tickets_allianz",
                                 "calendly", "clientes_por_nombre", "asesores_por_nombre"
                             ]},
-                            "description": "Subset opcional. Si omitís, Python infiere del mensaje.",
+                            "description": "Override granular. Normalmente usar `modo` en su lugar.",
                         },
                     },
-                    "required": ["mensaje"],
+                    "required": ["mensaje", "modo"],
                 },
             },
         },
@@ -165,6 +214,11 @@ def _dispatch(name: str, args: Dict[str, Any]) -> Any:
             clientes=args.get("clientes"),
             asesores=args.get("asesores"),
             incluir=args.get("incluir"),
+            modo=args.get("modo") or "completo",
+            email_asesor=args.get("email_asesor"),
+            email_cliente=args.get("email_cliente"),
+            solo_activas=bool(args.get("solo_activas") or False),
+            limite=int(args.get("limite") or 100),
         )
     if name == "expandir_pagina":
         return nc._resolve_page_full(args.get("page_id", ""))
