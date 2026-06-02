@@ -568,3 +568,158 @@ def notion_search(
         return {"results": nscan.search_notion(body.query, body.limit)}
     except Exception as e:
         raise HTTPException(500, f"error search: {e}")
+
+
+# ──────────── Endpoints curados: 10 DBs Allianz adicionales ────────────
+
+class RenovacionesIn(BaseModel):
+    poliza: Optional[str] = None
+    email_asesor: Optional[str] = None
+    estado: Optional[str] = Field(None, description="Not started | In progress | Done")
+    limit: int = 20
+
+
+class SiniestrosIn(BaseModel):
+    poliza: Optional[str] = None
+    email_asesor: Optional[str] = None
+    estado: Optional[str] = Field(None, description="Por iniciar | En progreso | Terminado")
+    limit: int = 20
+
+
+class ComisionesIn(BaseModel):
+    poliza: Optional[str] = None
+    tipo_pago: Optional[str] = Field(None, description="Comisión Regular | ChargeBack | Bono | Mes 13 PLU3 | Ajuste")
+    concepto: Optional[str] = None
+    desde: Optional[str] = Field(None, description="YYYY-MM-DD")
+    hasta: Optional[str] = Field(None, description="YYYY-MM-DD")
+    limit: int = 30
+
+
+class BonosAgentesIn(BaseModel):
+    clave_agente: Optional[str] = None
+    limit: int = 20
+
+
+class BonosPromotoriaIn(BaseModel):
+    nombre: Optional[str] = None
+    limit: int = 20
+
+
+class Mes13In(BaseModel):
+    cliente: Optional[str] = None
+    limit: int = 30
+
+
+class PuntosConvencionIn(BaseModel):
+    clave_agente: Optional[str] = None
+    limit: int = 20
+
+
+class ProductosIn(BaseModel):
+    nombre: Optional[str] = None
+    tipo_producto: Optional[str] = None
+    id_allianz: Optional[str] = None
+    limit: int = 20
+
+
+class ClientesPPRIn(BaseModel):
+    email_cliente: Optional[str] = None
+    email_asesor: Optional[str] = None
+    poliza: Optional[str] = None
+    estado: Optional[str] = None
+    producto: Optional[str] = Field(None, description="Optimaxx Plus | Seguro Médico")
+    limit: int = 30
+
+
+class MigracionCarteraIn(BaseModel):
+    emision: Optional[str] = None
+    migrado: Optional[bool] = None
+    limit: int = 30
+
+
+@router.post("/renovaciones")
+def renovaciones(body: RenovacionesIn, x_tomi_key: Optional[str] = Header(default=None)):
+    """Renovaciones de pólizas. Filtros: póliza, asesor (email), estado."""
+    _auth(x_tomi_key)
+    return {"results": nc.buscar_renovaciones(
+        poliza=body.poliza, email_asesor=body.email_asesor,
+        estado=body.estado, limit=body.limit,
+    )}
+
+
+@router.post("/siniestros")
+def siniestros(body: SiniestrosIn, x_tomi_key: Optional[str] = Header(default=None)):
+    """Siniestros / reclamos en curso."""
+    _auth(x_tomi_key)
+    return {"results": nc.buscar_siniestros(
+        poliza=body.poliza, email_asesor=body.email_asesor,
+        estado=body.estado, limit=body.limit,
+    )}
+
+
+@router.post("/comisiones")
+def comisiones(body: ComisionesIn, x_tomi_key: Optional[str] = Header(default=None)):
+    """Comisiones de agentes por póliza y/o tipo de pago. Ordenado por fecha desc."""
+    _auth(x_tomi_key)
+    return {"results": nc.buscar_comisiones(
+        poliza=body.poliza, tipo_pago=body.tipo_pago, concepto=body.concepto,
+        desde=body.desde, hasta=body.hasta, limit=body.limit,
+    )}
+
+
+@router.post("/bonos-agentes")
+def bonos_agentes(body: BonosAgentesIn, x_tomi_key: Optional[str] = Header(default=None)):
+    """Bonos Allianz para agentes individuales."""
+    _auth(x_tomi_key)
+    return {"results": nc.buscar_bonos_agentes(clave_agente=body.clave_agente, limit=body.limit)}
+
+
+@router.post("/bonos-promotoria")
+def bonos_promotoria(body: BonosPromotoriaIn, x_tomi_key: Optional[str] = Header(default=None)):
+    """Bonos Allianz Promotoría (equipo)."""
+    _auth(x_tomi_key)
+    return {"results": nc.buscar_bonos_promotoria(nombre=body.nombre, limit=body.limit)}
+
+
+@router.post("/mes-13-plu3")
+def mes_13_plu3(body: Mes13In, x_tomi_key: Optional[str] = Header(default=None)):
+    """Comisión recurrente Mes 13 PLU3 por cliente."""
+    _auth(x_tomi_key)
+    return {"results": nc.buscar_mes_13_plu3(cliente=body.cliente, limit=body.limit)}
+
+
+@router.post("/puntos-convencion")
+def puntos_convencion(body: PuntosConvencionIn, x_tomi_key: Optional[str] = Header(default=None)):
+    """Puntos Convención por clave de agente."""
+    _auth(x_tomi_key)
+    return {"results": nc.buscar_puntos_convencion(clave_agente=body.clave_agente, limit=body.limit)}
+
+
+@router.post("/productos")
+def productos(body: ProductosIn, x_tomi_key: Optional[str] = Header(default=None)):
+    """Catálogo de productos (Allianz + cursos)."""
+    _auth(x_tomi_key)
+    return {"results": nc.buscar_productos(
+        nombre=body.nombre, tipo_producto=body.tipo_producto,
+        id_allianz=body.id_allianz, limit=body.limit,
+    )}
+
+
+@router.post("/clientes-ppr")
+def clientes_ppr(body: ClientesPPRIn, x_tomi_key: Optional[str] = Header(default=None)):
+    """Clientes PPR Allianz (cartera principal PLU3)."""
+    _auth(x_tomi_key)
+    return {"results": nc.buscar_clientes_ppr(
+        email_cliente=body.email_cliente, email_asesor=body.email_asesor,
+        poliza=body.poliza, estado=body.estado, producto=body.producto,
+        limit=body.limit,
+    )}
+
+
+@router.post("/migracion-cartera")
+def migracion_cartera(body: MigracionCarteraIn, x_tomi_key: Optional[str] = Header(default=None)):
+    """Migración de Cartera entre asesores."""
+    _auth(x_tomi_key)
+    return {"results": nc.buscar_migracion_cartera(
+        emision=body.emision, migrado=body.migrado, limit=body.limit,
+    )}

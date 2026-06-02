@@ -50,6 +50,18 @@ DB_CLIENTES_PLU3 = os.getenv("NOTION_DB_CLIENTES_PLU3", "")
 DB_MIGRACION_CLIENTES = os.getenv("NOTION_DB_MIGRACION_CLIENTES", "")
 DB_PORTAFOLIOS = os.getenv("NOTION_DB_PORTAFOLIOS", "")
 
+# DBs adicionales (Allianz) descubiertas vía scan de relaciones
+DB_RENOVACIONES = os.getenv("NOTION_DB_RENOVACIONES", "")
+DB_SINIESTROS = os.getenv("NOTION_DB_SINIESTROS", "")
+DB_COMISIONES_AGENTES = os.getenv("NOTION_DB_COMISIONES_AGENTES", "")
+DB_BONOS_AGENTES = os.getenv("NOTION_DB_BONOS_AGENTES", "")
+DB_BONOS_PROMOTORIA = os.getenv("NOTION_DB_BONOS_PROMOTORIA", "")
+DB_MES_13_PLU3 = os.getenv("NOTION_DB_MES_13_PLU3", "")
+DB_PUNTOS_CONVENCION = os.getenv("NOTION_DB_PUNTOS_CONVENCION", "")
+DB_PRODUCTOS = os.getenv("NOTION_DB_PRODUCTOS", "")
+DB_CLIENTES_PPR = os.getenv("NOTION_DB_CLIENTES_PPR", "")
+DB_MIGRACION_CARTERA = os.getenv("NOTION_DB_MIGRACION_CARTERA", "")
+
 # Mapeo nombre amigable -> DB ID, usado por endpoint debug y búsqueda multi-DB
 SUB_DBS_CLIENTES: Dict[str, str] = {
     "clientes_general": DB_CLIENTES,
@@ -891,3 +903,144 @@ def clasificar_usuario_por_email(email: str) -> Dict[str, Any]:
     if cliente:
         return {"tipo": "cliente", "data": cliente[0]}
     return {"tipo": "prospecto", "data": None}
+
+
+# ──────────── DBs Allianz adicionales (curadas) ────────────
+
+def _query_simple(db_id: str, conditions: List[Dict[str, Any]], limit: int = 20,
+                  sorts: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
+    """Helper genérico: arma filter AND con N condiciones y devuelve flattened."""
+    if not db_id:
+        return []
+    kwargs: Dict[str, Any] = {"database_id": db_id, "page_size": min(limit, 100)}
+    if conditions:
+        kwargs["filter"] = conditions[0] if len(conditions) == 1 else {"and": conditions}
+    if sorts:
+        kwargs["sorts"] = sorts
+    resp = _retry_429(_client().databases.query, **kwargs)
+    return [_flatten_props(p) for p in resp.get("results", [])[:limit]]
+
+
+def buscar_renovaciones(*, poliza: Optional[str] = None, email_asesor: Optional[str] = None,
+                        estado: Optional[str] = None, limit: int = 20) -> List[Dict[str, Any]]:
+    """Renovaciones por póliza, asesor o estado.
+    Si pasan email_asesor: resuelve el page_id del asesor y filtra la relation."""
+    conds: List[Dict[str, Any]] = []
+    if poliza:
+        conds.append({"property": "Nombre", "title": {"contains": poliza}})
+    if estado:
+        conds.append({"property": "Estado de Renovación", "status": {"equals": estado}})
+    if email_asesor:
+        asesores = buscar_asesor_por_email(email_asesor)
+        if asesores:
+            conds.append({"property": "Asesores", "relation": {"contains": asesores[0]["_id"]}})
+    return _query_simple(DB_RENOVACIONES, conds, limit)
+
+
+def buscar_siniestros(*, poliza: Optional[str] = None, email_asesor: Optional[str] = None,
+                      estado: Optional[str] = None, limit: int = 20) -> List[Dict[str, Any]]:
+    conds: List[Dict[str, Any]] = []
+    if poliza:
+        conds.append({"property": "Siniestro", "title": {"contains": poliza}})
+    if estado:
+        conds.append({"property": "Estado", "status": {"equals": estado}})
+    if email_asesor:
+        asesores = buscar_asesor_por_email(email_asesor)
+        if asesores:
+            conds.append({"property": "Asesores ", "relation": {"contains": asesores[0]["_id"]}})
+    return _query_simple(DB_SINIESTROS, conds, limit)
+
+
+def buscar_comisiones(*, poliza: Optional[str] = None, tipo_pago: Optional[str] = None,
+                      concepto: Optional[str] = None, desde: Optional[str] = None,
+                      hasta: Optional[str] = None, limit: int = 30) -> List[Dict[str, Any]]:
+    """Comisiones Agentes. tipo_pago ∈ {'Comisión Regular','ChargeBack','Bono','Mes 13 PLU3','Ajuste'}."""
+    conds: List[Dict[str, Any]] = []
+    if poliza:
+        conds.append({"property": "Póliza", "rich_text": {"contains": poliza}})
+    if tipo_pago:
+        conds.append({"property": "Tipo de Pago", "select": {"equals": tipo_pago}})
+    if concepto:
+        conds.append({"property": "Concepto", "title": {"contains": concepto}})
+    if desde:
+        conds.append({"property": "Fecha de pago Allianz", "date": {"on_or_after": desde}})
+    if hasta:
+        conds.append({"property": "Fecha de pago Allianz", "date": {"on_or_before": hasta}})
+    return _query_simple(DB_COMISIONES_AGENTES, conds, limit,
+                         sorts=[{"property": "Fecha de pago Allianz", "direction": "descending"}])
+
+
+def buscar_bonos_agentes(*, clave_agente: Optional[str] = None, limit: int = 20) -> List[Dict[str, Any]]:
+    """Bonos Allianz Agentes (title = Clave de Agente)."""
+    conds: List[Dict[str, Any]] = []
+    if clave_agente:
+        conds.append({"property": "Clave de Agente", "title": {"contains": clave_agente}})
+    return _query_simple(DB_BONOS_AGENTES, conds, limit)
+
+
+def buscar_bonos_promotoria(*, nombre: Optional[str] = None, limit: int = 20) -> List[Dict[str, Any]]:
+    """Bonos Allianz Promotoría (title = Name)."""
+    conds: List[Dict[str, Any]] = []
+    if nombre:
+        conds.append({"property": "Name", "title": {"contains": nombre}})
+    return _query_simple(DB_BONOS_PROMOTORIA, conds, limit)
+
+
+def buscar_mes_13_plu3(*, cliente: Optional[str] = None, limit: int = 30) -> List[Dict[str, Any]]:
+    """Mes 13 PLU3 (title = Cliente)."""
+    conds: List[Dict[str, Any]] = []
+    if cliente:
+        conds.append({"property": "Cliente", "title": {"contains": cliente}})
+    return _query_simple(DB_MES_13_PLU3, conds, limit)
+
+
+def buscar_puntos_convencion(*, clave_agente: Optional[str] = None, limit: int = 20) -> List[Dict[str, Any]]:
+    """Puntos Convención (title = Clave de Agente)."""
+    conds: List[Dict[str, Any]] = []
+    if clave_agente:
+        conds.append({"property": "Clave de Agente", "title": {"contains": clave_agente}})
+    return _query_simple(DB_PUNTOS_CONVENCION, conds, limit)
+
+
+def buscar_productos(*, nombre: Optional[str] = None, tipo_producto: Optional[str] = None,
+                     id_allianz: Optional[str] = None, limit: int = 20) -> List[Dict[str, Any]]:
+    """Catálogo de Productos.
+    tipo_producto ∈ {'Producto de Ahorro','Producto de Inversión','Seguro de Auto',
+                     'Seguro de Vida','Seguro de Gastos Médicos','Curso Digital',
+                     'Seguro Residencial','Seguro de Alta Gama','Seguro'}."""
+    conds: List[Dict[str, Any]] = []
+    if nombre:
+        conds.append({"property": "Nombre", "title": {"contains": nombre}})
+    if tipo_producto:
+        conds.append({"property": "Tipo de producto", "select": {"equals": tipo_producto}})
+    if id_allianz:
+        conds.append({"property": "ID Allianz", "rich_text": {"contains": id_allianz}})
+    return _query_simple(DB_PRODUCTOS, conds, limit)
+
+
+def buscar_clientes_ppr(*, email_cliente: Optional[str] = None, email_asesor: Optional[str] = None,
+                        poliza: Optional[str] = None, estado: Optional[str] = None,
+                        producto: Optional[str] = None, limit: int = 30) -> List[Dict[str, Any]]:
+    """Clientes PPR Allianz. Filtros principales del flujo PLU3."""
+    conds: List[Dict[str, Any]] = []
+    if email_cliente:
+        conds.append({"property": "Correo Electrónico", "rich_text": {"contains": email_cliente.lower()}})
+    if email_asesor:
+        conds.append({"property": "Correo Asesor", "rich_text": {"contains": email_asesor.lower()}})
+    if poliza:
+        conds.append({"property": "Póliza", "rich_text": {"contains": poliza}})
+    if estado:
+        conds.append({"property": "Estado ", "select": {"equals": estado}})
+    if producto:
+        conds.append({"property": "Producto", "select": {"equals": producto}})
+    return _query_simple(DB_CLIENTES_PPR, conds, limit)
+
+
+def buscar_migracion_cartera(*, emision: Optional[str] = None, migrado: Optional[bool] = None,
+                             limit: int = 30) -> List[Dict[str, Any]]:
+    conds: List[Dict[str, Any]] = []
+    if emision:
+        conds.append({"property": "Emisión", "title": {"contains": emision}})
+    if migrado is not None:
+        conds.append({"property": "Migrado", "checkbox": {"equals": bool(migrado)}})
+    return _query_simple(DB_MIGRACION_CARTERA, conds, limit)
