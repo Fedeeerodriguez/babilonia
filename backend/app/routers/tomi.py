@@ -22,6 +22,8 @@ from app.services.tomi import agente as ag
 from app.services.tomi import memorias as mem
 from app.services.tomi import memorias_bd as mbd
 from app.services.tomi import agente_memorias as ag_mem
+from app.services.tomi import clasificador as clasif
+from app.services.tomi import notion_scanner as nscan
 from app.services.tomi.cache import notion_cache
 
 router = APIRouter(prefix="/api/tomi", tags=["tomi"])
@@ -80,6 +82,72 @@ class CalendlyIn(BaseModel):
 def clasificar(body: ClasificarIn, x_tomi_key: Optional[str] = Header(default=None)):
     _auth(x_tomi_key)
     return nc.clasificar_usuario_por_email(body.email)
+
+
+class ClasificarUsuarioIn(BaseModel):
+    user_id: Optional[str] = Field(None, description="chat_id de Telegram / wa_id de WhatsApp")
+    mensaje_usuario: Optional[str] = Field(None, description="Texto del usuario; de aquí se extrae el email")
+    email: Optional[str] = Field(None, description="Email explícito; si viene, no se parsea el mensaje")
+    user_nombre: Optional[str] = None
+    force: bool = Field(False, description="True para ignorar caché y reconsultar Notion")
+
+
+@router.post("/clasificar-usuario")
+def clasificar_usuario(
+    body: ClasificarUsuarioIn,
+    x_tomi_key: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    """Clasifica al usuario (asesor/estudiante/cliente/prospecto) usando Notion +
+    caché persistente en Supabase. Reemplaza al AI Agent2 de n8n.
+
+    Respuesta:
+        {
+          "comando_1": "registrado" | "no registrado",
+          "comando_2": "asesor" | "estudiante" | "cliente" | "prospecto",
+          "email": "...",
+          "user_id": "...",
+          "user_nombre": "...",
+          "fuente": "cache" | "cache_email" | "notion" | "sin_email"
+        }
+    """
+    _auth(x_tomi_key)
+    return clasif.clasificar(
+        db,
+        user_id=body.user_id,
+        mensaje_usuario=body.mensaje_usuario,
+        email=body.email,
+        user_nombre=body.user_nombre,
+        force=body.force,
+    )
+
+
+@router.get("/clasificar-usuario/{user_id}")
+def obtener_clasificacion(
+    user_id: str,
+    x_tomi_key: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    """Lookup directo a la caché. 404 si no está clasificado todavía."""
+    _auth(x_tomi_key)
+    cached = clasif.buscar_cache(db, user_id=user_id, email=None)
+    if not cached:
+        raise HTTPException(status_code=404, detail="no clasificado")
+    return cached
+
+
+@router.delete("/clasificar-usuario/{user_id}")
+def borrar_clasificacion(
+    user_id: str,
+    x_tomi_key: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    """Borra la fila de caché para que el próximo /clasificar-usuario reconsulte Notion."""
+    _auth(x_tomi_key)
+    from sqlalchemy import text as _text
+    db.execute(_text("DELETE FROM tomi_clasificaciones WHERE user_id = :uid"), {"uid": user_id})
+    db.commit()
+    return {"deleted": user_id}
 
 
 @router.post("/asesor")
@@ -355,3 +423,148 @@ def debug_schema(db_name: str, x_tomi_key: Optional[str] = Header(default=None))
         return {"db_id": db_id, "properties": props, "ejemplo": ejemplo}
     except Exception as e:
         raise HTTPException(500, f"error: {e}")
+
+
+# ──────────────── Notion Scanner & Allowlist ────────────────
+
+class AllowlistItemIn(BaseModel):
+    db_id: str
+    slug: Optional[str] = None
+    title: Optional[str] = None
+    enabled: bool = True
+    descripcion: Optional[str] = None
+
+
+class AllowlistBulkIn(BaseModel):
+    items: List[AllowlistItemIn]
+
+
+class QueryDbIn(BaseModel):
+    slug_or_id: str
+    filtros: Optional[Dict[str, Any]] = None
+    limit: int = 20
+
+
+class SearchIn(BaseModel):
+    query: str
+    limit: int = 10
+
+
+@router.get("/notion/relaciones-conocidas")
+def notion_relaciones_conocidas(
+    x_tomi_key: Optional[str] = Header(default=None),
+):
+    """Mapa de qué DBs están enganchadas (vía columnas `relation`) a las DBs
+    que Tomi YA tiene mapeadas (NOTION_DB_*).
+
+    Devuelve `tablas` con cada DB conocida y sus relaciones, y `descubiertas`
+    con las DBs nuevas que aparecen referenciadas y aún no están integradas.
+    """
+    _auth(x_tomi_key)
+    try:
+        return nscan.mapear_relaciones_conocidas()
+    except Exception as e:
+        raise HTTPException(500, f"error: {e}")
+
+
+@router.get("/notion/discover")
+def notion_discover(
+    persistir: bool = False,
+    x_tomi_key: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    """Lista TODAS las DBs que la integración Notion de Tomi tiene compartidas.
+
+    Si persistir=true, vuelca cada DB en `tomi_notion_allowlist` con enabled=false
+    para que después marques cuáles habilitar.
+    """
+    _auth(x_tomi_key)
+    try:
+        dbs = nscan.discover_databases()
+    except Exception as e:
+        raise HTTPException(500, f"error Notion search: {e}")
+
+    if persistir:
+        existing = {r["db_id"]: r for r in nscan.listar_allowlist(db)}
+        for d in dbs:
+            prev = existing.get(d["id"])
+            nscan.upsert_allowlist(
+                db,
+                db_id=d["id"],
+                slug=d["slug"],
+                title=d["title"],
+                enabled=bool(prev["enabled"]) if prev else False,
+                descripcion=(prev or {}).get("descripcion"),
+                schema=d["schema"],
+            )
+    return {"total": len(dbs), "databases": dbs}
+
+
+@router.get("/notion/allowlist")
+def notion_allowlist_list(
+    x_tomi_key: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    _auth(x_tomi_key)
+    return {"items": nscan.listar_allowlist(db)}
+
+
+@router.post("/notion/allowlist")
+def notion_allowlist_upsert(
+    body: AllowlistBulkIn,
+    x_tomi_key: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    _auth(x_tomi_key)
+    for it in body.items:
+        nscan.upsert_allowlist(
+            db,
+            db_id=it.db_id,
+            slug=it.slug or nscan._slugify(it.title or it.db_id),
+            title=it.title or it.db_id,
+            enabled=it.enabled,
+            descripcion=it.descripcion,
+        )
+    return {"updated": len(body.items)}
+
+
+@router.post("/notion/query")
+def notion_query(
+    body: QueryDbIn,
+    x_tomi_key: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    """Query genérico sobre una DB habilitada en la allowlist."""
+    _auth(x_tomi_key)
+    try:
+        return nscan.query_db_filtered(db, body.slug_or_id, body.filtros, body.limit)
+    except PermissionError as e:
+        raise HTTPException(403, str(e))
+    except Exception as e:
+        raise HTTPException(500, f"error query: {e}")
+
+
+@router.get("/notion/pagina/{page_id}")
+def notion_pagina(
+    page_id: str,
+    x_tomi_key: Optional[str] = Header(default=None),
+):
+    """Lee el contenido completo de una página de Notion en markdown."""
+    _auth(x_tomi_key)
+    try:
+        return nscan.get_page_content(page_id)
+    except Exception as e:
+        raise HTTPException(500, f"error lectura: {e}")
+
+
+@router.post("/notion/search")
+def notion_search(
+    body: SearchIn,
+    x_tomi_key: Optional[str] = Header(default=None),
+):
+    """Búsqueda global tipo Cmd+K en todo Notion (lo que ve la integración)."""
+    _auth(x_tomi_key)
+    try:
+        return {"results": nscan.search_notion(body.query, body.limit)}
+    except Exception as e:
+        raise HTTPException(500, f"error search: {e}")

@@ -1,0 +1,30 @@
+{
+  "name": "Clasificador (HTTP Python)",
+  "nodes": [
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.TOMI_API_URL }}/api/tomi/clasificar-usuario",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-Tomi-Key", "value": "={{ $env.TOMI_INTERNAL_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  user_id: $('Edit Fields1').item.json.message.chat.id.toString(),\n  user_nombre: $('Edit Fields1').item.json.message.from.first_name,\n  mensaje_usuario: $('Redis9').item.json.mensajes\n}) }}",
+        "options": { "timeout": 15000 }
+      },
+      "id": "http-clasificar",
+      "name": "Clasificar (Python)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-1808, 1232]
+    }
+  ],
+  "connections": {},
+  "pinData": {},
+  "meta": { "templateCredsSetupCompleted": true }
+}

@@ -6,6 +6,7 @@ import Conversations from './pages/Conversations'
 import Advisors from './pages/Advisors'
 import Knowledge from './pages/Knowledge'
 import AgentChat from './pages/AgentChat'
+import Analytics from './pages/Analytics'
 import Team from './pages/Team'
 import Layout from './components/Layout/Layout'
 import ProtectedRoute from './components/Layout/ProtectedRoute'
@@ -24,6 +25,7 @@ export default function App() {
       <Route path="/advisors" element={<P><Advisors /></P>} />
       <Route path="/knowledge" element={<P><Knowledge /></P>} />
       <Route path="/agent" element={<P><AgentChat /></P>} />
+      <Route path="/analytics" element={<P><Analytics /></P>} />
       <Route path="/team" element={<P requireAdmin><Team /></P>} />
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
