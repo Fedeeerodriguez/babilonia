@@ -12,6 +12,13 @@ export default function Login() {
   const { login } = useAuth()
   const nav = useNavigate()
 
+  // Modo demo: muestra un botón para autocompletar credenciales (VITE_DEMO_MODE=1)
+  const demoMode = import.meta.env.VITE_DEMO_MODE === '1'
+  const DEMO_EMAIL = 'demo@babilonia.com'
+  const DEMO_PASS = 'DemoBabilonia2026'
+
+  const fillDemo = () => { setEmail(DEMO_EMAIL); setPassword(DEMO_PASS); setErr('') }
+
   const submit = async (e) => {
     e.preventDefault(); setErr(''); setLoading(true)
     try { await login(email, password); nav('/dashboard') }
@@ -69,6 +76,22 @@ export default function Login() {
               {loading ? 'Ingresando...' : <>Continuar <ArrowRight size={16}/></>}
             </button>
           </form>
+
+          {demoMode && (
+            <div className="mt-5 rounded-xl border border-cobalt/30 bg-cobalt/5 p-4">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-cobalt-700 font-semibold mb-2">
+                🧪 Modo demo
+              </div>
+              <button type="button" onClick={fillDemo}
+                className="btn-secondary w-full mb-2">
+                Usar credenciales demo
+              </button>
+              <div className="text-[12px] text-muted leading-relaxed">
+                Usuario: <span className="font-mono text-deep">{DEMO_EMAIL}</span><br/>
+                Clave: <span className="font-mono text-deep">{DEMO_PASS}</span>
+              </div>
+            </div>
+          )}
 
           <div className="text-center mt-8 text-[13px] text-muted">
             ¿Sos nuevo? <Link to="/register" className="text-cobalt-700 font-medium hover:text-cobalt-600">Crear cuenta →</Link>
