@@ -63,6 +63,12 @@ class CobranzasIn(BaseModel):
     poliza: str
 
 
+class DiasAtrasoIn(BaseModel):
+    poliza: Optional[str] = Field(None, description="Número de póliza exacto, si se conoce")
+    email_cliente: Optional[str] = Field(None, description="Email del cliente")
+    cliente: Optional[str] = Field(None, description="Nombre del cliente (búsqueda parcial)")
+
+
 class TicketsAllianzIn(BaseModel):
     tramite: Optional[str] = None
 
@@ -178,6 +184,19 @@ def emisiones(body: EmisionesIn, x_tomi_key: Optional[str] = Header(default=None
 def cobranzas(body: CobranzasIn, x_tomi_key: Optional[str] = Header(default=None)):
     _auth(x_tomi_key)
     return {"results": nc.buscar_cobranzas_por_poliza(body.poliza)}
+
+
+@router.post("/dias-atraso")
+def dias_atraso(body: DiasAtrasoIn, x_tomi_key: Optional[str] = Header(default=None)):
+    """Cuántos días de atraso (y monto faltante) tiene un cliente o póliza."""
+    _auth(x_tomi_key)
+    if not (body.poliza or body.email_cliente or body.cliente):
+        raise HTTPException(status_code=400, detail="Requiere poliza, email_cliente o cliente")
+    return nc.dias_de_atraso(
+        poliza=body.poliza,
+        email_cliente=body.email_cliente,
+        cliente=body.cliente,
+    )
 
 
 @router.post("/tickets-allianz")

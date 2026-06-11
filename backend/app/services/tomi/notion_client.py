@@ -864,6 +864,71 @@ def buscar_cobranzas_por_poliza(poliza: str) -> List[Dict[str, Any]]:
     )
 
 
+def _to_int(v: Any) -> int:
+    try:
+        return int(float(v))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _cobranza_resumen(c: Dict[str, Any]) -> Dict[str, Any]:
+    """Extrae los campos relevantes de atraso de una cobranza flattened."""
+    dias = _to_int(c.get("Días de atraso") or c.get("Días de Atraso Actuales") or 0)
+    return {
+        "poliza": c.get("Póliza") or c.get("_title") or "(sin póliza)",
+        "dias_de_atraso": dias,
+        "monto_faltante": c.get("Monto Faltante") or 0,
+        "estado": c.get("Estado de Cobranza") or c.get("Estado"),
+        "en_atraso": dias > 0,
+    }
+
+
+def dias_de_atraso(
+    *,
+    poliza: Optional[str] = None,
+    email_cliente: Optional[str] = None,
+    cliente: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Calcula el atraso de cobranzas de un cliente o póliza.
+
+    Acepta una póliza directa, o un email/nombre de cliente (en cuyo caso
+    resuelve sus pólizas vía emisiones y luego las cobranzas de cada una).
+
+    Devuelve un agregado claro para que Tomi responda
+    «cuántos días de atraso tiene este cliente» sin ambigüedad.
+    """
+    cobranzas: List[Dict[str, Any]] = []
+    if poliza:
+        cobranzas = buscar_cobranzas_por_poliza(poliza)
+    elif email_cliente or cliente:
+        emisiones = buscar_emisiones_batch(
+            clientes=[cliente] if cliente else None,
+            emails=[email_cliente] if email_cliente else None,
+        )
+        polizas = sorted({
+            e.get("Número de Póliza") or e.get("_title")
+            for e in emisiones
+            if (e.get("Número de Póliza") or e.get("_title"))
+        })
+        if polizas:
+            cobranzas = buscar_cobranzas_batch(polizas)
+
+    detalle = [_cobranza_resumen(c) for c in cobranzas]
+    en_atraso = [d for d in detalle if d["en_atraso"]]
+    max_dias = max((d["dias_de_atraso"] for d in detalle), default=0)
+    total_faltante = sum(_to_int(d["monto_faltante"]) for d in detalle)
+
+    return {
+        "consulta": {"poliza": poliza, "email_cliente": email_cliente, "cliente": cliente},
+        "tiene_atraso": bool(en_atraso),
+        "max_dias_de_atraso": max_dias,
+        "polizas_en_atraso": len(en_atraso),
+        "polizas_revisadas": len(detalle),
+        "total_monto_faltante": total_faltante,
+        "detalle": detalle,
+    }
+
+
 def buscar_tickets_allianz(tramite: Optional[str] = None) -> List[Dict[str, Any]]:
     if tramite:
         filt = {"property": "Nombre del Trámite", "title": {"contains": tramite}}
