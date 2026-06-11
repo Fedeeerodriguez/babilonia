@@ -112,3 +112,50 @@ class TextUploadIn(BaseModel):
 class AgentChatIn(BaseModel):
     message: str
     history: List[dict] = []
+
+
+# ─── Sandbox feedback ───────────────────────────────────────────
+class FeedbackLogIn(BaseModel):
+    """Registra una interacción de Tomi (la llama el sandbox / n8n)."""
+    pregunta: str
+    respuesta_tomi: Optional[str] = None
+    canal: str = "sandbox"
+    source: Optional[str] = None
+    user_email: Optional[str] = None
+
+
+class FeedbackReviewIn(BaseModel):
+    """El admin califica y/o corrige una interacción."""
+    rating: Optional[str] = Field(None, description="good | bad")
+    respuesta_corregida: Optional[str] = None
+    tags: Optional[List[str]] = None
+
+
+class FeedbackOut(BaseModel):
+    id: int
+    pregunta: str
+    respuesta_tomi: Optional[str]
+    respuesta_corregida: Optional[str]
+    rating: Optional[str]
+    status: str
+    canal: Optional[str]
+    source: Optional[str]
+    tags: Optional[List[str]]
+    user_email: Optional[str]
+    reviewed_by: Optional[str]
+    created_at: datetime
+    reviewed_at: Optional[datetime]
+
+    class Config:
+        from_attributes = True
+
+
+class FeedbackStats(BaseModel):
+    total: int
+    pendientes: int
+    revisadas: int
+    promovidas: int
+    good: int
+    bad: int
+    tasa_aprobacion: float
+    top_tags_malos: List[dict]

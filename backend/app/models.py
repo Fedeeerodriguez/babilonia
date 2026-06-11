@@ -75,3 +75,33 @@ class AgentChatMessage(Base):
     content = Column(Text)
     tool_calls = Column(JSON)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow, index=True)
+
+
+class FeedbackStatus(str, Enum):
+    pending = "pending"      # registrada, esperando revisión del admin
+    reviewed = "reviewed"    # el admin la calificó / corrigió
+    promoted = "promoted"    # la corrección se cargó al vector store (conocimiento)
+
+
+class SandboxFeedback(Base):
+    """Interacciones del sandbox de Tomi + correcciones de los admins.
+
+    Cierra el loop de mejora: cada respuesta de Tomi se registra, un admin la
+    califica/corrige, y las correcciones aprobadas se promueven al vector store
+    para que Tomi aprenda. También sirve como dataset Q/A exportable.
+    """
+    __tablename__ = "sandbox_feedback"
+    id = Column(PK, primary_key=True, autoincrement=True)
+    pregunta = Column(Text, nullable=False)
+    respuesta_tomi = Column(Text)
+    respuesta_corregida = Column(Text)
+    rating = Column(String, index=True)            # good | bad | None
+    status = Column(String, default=FeedbackStatus.pending.value, index=True)
+    canal = Column(String, index=True)             # sandbox | whatsapp | mail | discord
+    source = Column(String, index=True)            # plu3 | patrimonial | educacion | plu | plu4
+    tags = Column(JSON)                            # ["tono", "dato_incorrecto", ...]
+    user_email = Column(String)                    # quién le escribió a Tomi
+    reviewed_by = Column(String)                   # admin que revisó
+    promoted_doc_source = Column(String)           # source con que se cargó al vector store
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, index=True)
+    reviewed_at = Column(DateTime(timezone=True))

@@ -29,9 +29,22 @@ cargar contenido y sumar canales**.
 - [ ] Conectar Tomi a Gmail.
 - [ ] Conectar Tomi a Discord.
 
+### 🔁 Loop de feedback del sandbox (idea #3 — aprovechar datos del sandbox)
+- [x] Tabla `sandbox_feedback` + router `/api/feedback/*`:
+      - `POST /log` — el sandbox/n8n registra cada interacción (auth `X-Tomi-Key`).
+      - `POST /{id}/review` — admin califica (good/bad), corrige la respuesta y taggea.
+      - `POST /{id}/promote` — **cierra el loop**: embebe la corrección en `documents`
+        con el `source` que consume WATI → Tomi aprende de inmediato (solo admin).
+      - `GET /stats` — total, pendientes, tasa de aprobación, top tags de respuestas malas.
+      - `GET /export` — dataset Q/A aprobado (para fine-tuning / re-embedding offline).
+- [ ] Frontend: página "Sandbox" para revisar/corregir/promover desde la UI.
+- [ ] n8n: que el nodo del sandbox llame a `/api/feedback/log` tras cada respuesta de Tomi.
+
 ### 📊 Etapa 2 — Auto-mejora (Semanas 7–8)
-- [ ] Panel de control: consultas atendidas, resueltas, trabadas, feedback.
-- [ ] Job semanal: IA analiza el panel y entrega informe de sugerencias (humano aprueba).
+- [ ] Panel de control: consultas atendidas, resueltas, trabadas, feedback
+      (apoyarse en `/api/feedback/stats` + `tomi_conversaciones`).
+- [ ] Job semanal: IA analiza el panel + el dataset de feedback y entrega informe
+      de sugerencias (humano aprueba). Insumo directo: `GET /api/feedback/export`.
 
 ## 💡 Ideas innovadoras propuestas
 
