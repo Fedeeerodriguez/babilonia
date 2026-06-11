@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { LayoutGrid, MessagesSquare, Users, BookOpen, Bot, UserCog, BarChart3 } from 'lucide-react'
+import { LayoutGrid, MessagesSquare, Users, BookOpen, Bot, UserCog, BarChart3, FlaskConical } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 
 const link = ({ isActive }) =>
@@ -23,6 +23,7 @@ export default function Sidebar() {
       <NavLink to="/knowledge" className={link}><BookOpen size={15} strokeWidth={1.8}/> Documentos</NavLink>
       <NavLink to="/agent" className={link}><Bot size={15} strokeWidth={1.8}/> Tomi (chat)</NavLink>
       <NavLink to="/analytics" className={link}><BarChart3 size={15} strokeWidth={1.8}/> Analítica</NavLink>
+      <NavLink to="/sandbox" className={link}><FlaskConical size={15} strokeWidth={1.8}/> Sandbox</NavLink>
 
       {isAdmin && (
         <>

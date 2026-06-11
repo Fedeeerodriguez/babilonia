@@ -37,8 +37,10 @@ cargar contenido y sumar canales**.
         con el `source` que consume WATI → Tomi aprende de inmediato (solo admin).
       - `GET /stats` — total, pendientes, tasa de aprobación, top tags de respuestas malas.
       - `GET /export` — dataset Q/A aprobado (para fine-tuning / re-embedding offline).
-- [ ] Frontend: página "Sandbox" para revisar/corregir/promover desde la UI.
-- [ ] n8n: que el nodo del sandbox llame a `/api/feedback/log` tras cada respuesta de Tomi.
+- [x] Frontend: página **Sandbox** (`/sandbox`) para revisar/corregir/promover desde la UI
+      (stats, filtros por estado, etiquetas, export del dataset).
+- [x] n8n: workflow `feedback_log_sandbox.json` + guía para llamar a `/api/feedback/log`
+      tras cada respuesta de Tomi.
 
 ### 📊 Etapa 2 — Auto-mejora (Semanas 7–8)
 - [ ] Panel de control: consultas atendidas, resueltas, trabadas, feedback
