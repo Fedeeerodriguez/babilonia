@@ -72,3 +72,24 @@ create table if not exists public.tomi_locks (
   wa_id       text primary key,
   acquired_at timestamptz not null default now()
 );
+
+-- ─── sandbox_feedback: loop de mejora (interacciones de Tomi + correcciones de admins)
+-- También la crea SQLAlchemy (create_all); este DDL es para referencia / Supabase limpio.
+create table if not exists public.sandbox_feedback (
+  id                   bigserial primary key,
+  pregunta             text not null,
+  respuesta_tomi       text,
+  respuesta_corregida  text,
+  rating               text,                      -- good | bad | null
+  status               text default 'pending',    -- pending | reviewed | promoted
+  canal                text,                       -- sandbox | whatsapp | mail | discord
+  source               text,                       -- plu3 | patrimonial | educacion | plu | plu4
+  tags                 jsonb,
+  user_email           text,
+  reviewed_by          text,
+  promoted_doc_source  text,
+  created_at           timestamptz not null default now(),
+  reviewed_at          timestamptz
+);
+create index if not exists idx_sandboxfb_status on public.sandbox_feedback (status, created_at desc);
+create index if not exists idx_sandboxfb_rating on public.sandbox_feedback (rating);
