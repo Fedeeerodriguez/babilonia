@@ -20,7 +20,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app import models, schemas
-from app.database import get_db
+from app.database import get_db, get_docs_db
 from app.security import get_current_user, require_admin
 
 router = APIRouter(prefix="/api/feedback", tags=["feedback"])
@@ -115,6 +115,7 @@ def promote_feedback(
     fb_id: int,
     source: Optional[str] = Query(None, description="source destino en el vector store"),
     db: Session = Depends(get_db),
+    docs_db: Session = Depends(get_docs_db),
     _: models.User = Depends(require_admin),
 ):
     """Carga la corrección aprobada al vector store `documents` (Tomi aprende).
@@ -147,7 +148,7 @@ def promote_feedback(
         "feedback_id": fb.id,
         "title": f"Feedback #{fb.id}",
     }
-    _embed_and_store(db, [contenido], meta)
+    _embed_and_store(docs_db, [contenido], meta)
 
     fb.status = models.FeedbackStatus.promoted.value
     fb.promoted_doc_source = dest_source

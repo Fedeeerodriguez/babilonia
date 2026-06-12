@@ -13,7 +13,7 @@ from sqlalchemy import text
 from openai import OpenAI
 from pypdf import PdfReader
 from app import models, schemas
-from app.database import get_db
+from app.database import get_db, get_docs_db
 from app.security import get_current_user
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
@@ -21,6 +21,9 @@ router = APIRouter(prefix="/api/documents", tags=["documents"])
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 150
 EMBED_MODEL = os.getenv("OPENAI_EMBED_MODEL", "text-embedding-3-small")
+# La tabla del vector store vive en DOCUMENTS_DATABASE_URL (la que consulta el bot),
+# que puede ser un Postgres distinto al principal.
+DOCS_TABLE = os.getenv("DOCUMENTS_TABLE", "documents")
 
 
 def _client() -> OpenAI:
@@ -41,14 +44,19 @@ def _chunk(text_in: str, size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -
     return chunks
 
 
-def _embed_and_store(db: Session, chunks: List[str], metadata_base: dict) -> int:
+def _embed_and_store(docs_db: Session, chunks: List[str], metadata_base: dict) -> int:
+    """Embebe y persiste los chunks en el vector store (DB de `documents`).
+
+    `docs_db` debe ser una sesión hacia DOCUMENTS_DATABASE_URL (get_docs_db),
+    que es donde el bot de WATI consulta el conocimiento.
+    """
     client = _client()
     resp = client.embeddings.create(model=EMBED_MODEL, input=chunks)
     inserted = 0
     for idx, (chunk, e) in enumerate(zip(chunks, resp.data)):
         meta = {**metadata_base, "chunk_index": idx}
-        db.execute(text("""
-            INSERT INTO documents (content, metadata, embedding)
+        docs_db.execute(text(f"""
+            INSERT INTO {DOCS_TABLE} (content, metadata, embedding)
             VALUES (:content, CAST(:meta AS jsonb), CAST(:emb AS vector))
         """), {
             "content": chunk,
@@ -56,7 +64,7 @@ def _embed_and_store(db: Session, chunks: List[str], metadata_base: dict) -> int
             "emb": str(e.embedding),
         })
         inserted += 1
-    db.commit()
+    docs_db.commit()
     return inserted
 
 
@@ -77,6 +85,7 @@ async def upload_document(
     source: str = Form(...),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
+    docs_db: Session = Depends(get_docs_db),
     user: models.User = Depends(get_current_user),
 ):
     raw = await file.read()
@@ -98,7 +107,7 @@ async def upload_document(
 
     base_meta = {"source": source, "file_name": file.filename, "uploaded_by": user.email,
                  "uploaded_at": datetime.utcnow().isoformat(), "doc_id": str(meta.id)}
-    n = _embed_and_store(db, chunks, base_meta)
+    n = _embed_and_store(docs_db, chunks, base_meta)
 
     meta.chunks = n; meta.status = "ready"
     db.commit(); db.refresh(meta)
@@ -109,6 +118,7 @@ async def upload_document(
 def upload_text(
     payload: schemas.TextUploadIn,
     db: Session = Depends(get_db),
+    docs_db: Session = Depends(get_docs_db),
     user: models.User = Depends(get_current_user),
 ):
     chunks = _chunk(payload.text)
@@ -123,7 +133,7 @@ def upload_text(
 
     base_meta = {"source": payload.source, "file_name": payload.title, "uploaded_by": user.email,
                  "uploaded_at": datetime.utcnow().isoformat(), "doc_id": str(meta.id)}
-    n = _embed_and_store(db, chunks, base_meta)
+    n = _embed_and_store(docs_db, chunks, base_meta)
 
     meta.chunks = n; meta.status = "ready"
     db.commit(); db.refresh(meta)
