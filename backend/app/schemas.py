@@ -143,6 +143,7 @@ class FeedbackOut(BaseModel):
     tags: Optional[List[str]]
     user_email: Optional[str]
     reviewed_by: Optional[str]
+    promoted_doc_source: Optional[str]
     created_at: datetime
     reviewed_at: Optional[datetime]
 
