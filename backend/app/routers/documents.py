@@ -30,7 +30,11 @@ def _client() -> OpenAI:
     key = os.getenv("OPENAI_API_KEY")
     if not key:
         raise HTTPException(500, "OPENAI_API_KEY no configurada")
-    return OpenAI(api_key=key)
+    return OpenAI(
+        api_key=key,
+        timeout=float(os.getenv("OPENAI_TIMEOUT", "30")),
+        max_retries=int(os.getenv("OPENAI_MAX_RETRIES", "2")),
+    )
 
 
 def _chunk(text_in: str, size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> List[str]:

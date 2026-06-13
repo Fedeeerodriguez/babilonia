@@ -87,7 +87,10 @@ def chat(
 ):
     if not os.getenv("OPENAI_API_KEY"):
         raise HTTPException(500, "OPENAI_API_KEY no configurada")
-    client = OpenAI()
+    client = OpenAI(
+        timeout=float(os.getenv("OPENAI_TIMEOUT", "30")),
+        max_retries=int(os.getenv("OPENAI_MAX_RETRIES", "2")),
+    )
     messages = [{"role": "system", "content": SYSTEM}, *payload.history,
                 {"role": "user", "content": payload.message}]
 

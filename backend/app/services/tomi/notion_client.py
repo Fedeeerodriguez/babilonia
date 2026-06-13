@@ -81,7 +81,12 @@ SUB_DBS_CLIENTES: Dict[str, str] = {
 def _client() -> Client:
     if not NOTION_TOKEN:
         raise RuntimeError("NOTION_TOKEN no configurado")
-    return Client(auth=NOTION_TOKEN, log_level=logging.WARNING)
+    # timeout_ms: fallar rápido si Notion no responde, en vez de colgar el worker.
+    return Client(
+        auth=NOTION_TOKEN,
+        log_level=logging.WARNING,
+        timeout_ms=int(os.getenv("NOTION_TIMEOUT_MS", "20000")),
+    )
 
 
 def _retry_429(fn, *args, max_attempts: int = 4, **kwargs):
@@ -104,7 +109,13 @@ def _retry_429(fn, *args, max_attempts: int = 4, **kwargs):
                 delay *= 2
                 continue
             raise
-    return fn(*args, **kwargs)  # último intento sin catch
+    # Último intento: si vuelve a fallar por rate-limit, propagamos un error claro
+    # en vez de dejar escapar la excepción cruda del SDK.
+    try:
+        return fn(*args, **kwargs)
+    except Exception as e:
+        log.error("Notion sigue fallando tras %d reintentos: %s", max_attempts, e)
+        raise
 
 
 def _flatten_props(page: Dict[str, Any]) -> Dict[str, Any]:

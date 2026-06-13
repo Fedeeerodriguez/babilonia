@@ -8,12 +8,49 @@ Auth: header `X-Tomi-Key` con TOMI_INTERNAL_KEY (env).
 """
 from __future__ import annotations
 
+import logging
 import os
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from fastapi.routing import APIRoute
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
+
+log = logging.getLogger("tomi.api")
+
+
+class TomiSafeRoute(APIRoute):
+    """Route class para los endpoints del bot: si la lógica tira una excepción
+    inesperada (Notion caído, OpenAI, DB), devuelve 200 con un envelope de error
+    en vez de 500. Así Tomi (n8n) siempre recibe una respuesta procesable y puede
+    decirle algo al usuario en lugar de romperse.
+
+    Las HTTPException (401/400/404) y errores de validación (422) se respetan.
+    """
+
+    def get_route_handler(self):
+        original = super().get_route_handler()
+
+        async def handler(request: Request) -> Response:
+            try:
+                return await original(request)
+            except (HTTPException, RequestValidationError):
+                raise
+            except Exception as e:  # noqa: BLE001
+                log.exception("Endpoint Tomi %s falló: %s", request.url.path, e)
+                return JSONResponse(
+                    status_code=200,
+                    content={
+                        "results": [],
+                        "error": "servicio temporalmente no disponible, reintentá en unos segundos",
+                        "detail": str(e),
+                    },
+                )
+
+        return handler
 
 from app.database import get_db, get_docs_db
 from app.services.tomi import notion_client as nc
@@ -26,7 +63,7 @@ from app.services.tomi import clasificador as clasif
 from app.services.tomi import notion_scanner as nscan
 from app.services.tomi.cache import notion_cache
 
-router = APIRouter(prefix="/api/tomi", tags=["tomi"])
+router = APIRouter(prefix="/api/tomi", tags=["tomi"], route_class=TomiSafeRoute)
 
 INTERNAL_KEY = os.getenv("TOMI_INTERNAL_KEY", "")
 

@@ -1,7 +1,8 @@
 import logging
 import os
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import Base, engine
 from app.routers import auth, users, dashboard, metrics, conversations, documents, agent, tomi, analytics, feedback
@@ -36,6 +37,17 @@ app.add_middleware(
 
 for r in [auth, users, dashboard, metrics, conversations, documents, agent, tomi, analytics, feedback]:
     app.include_router(r.router)
+
+
+@app.exception_handler(Exception)
+async def _unhandled_exception_handler(request: Request, exc: Exception):
+    """Ninguna excepción no manejada sale sin loguearse. Los endpoints de Tomi
+    además degradan a 200 vía su route class; este handler cubre el resto."""
+    log.exception("Excepción no manejada en %s: %s", request.url.path, exc)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "error interno", "path": str(request.url.path)},
+    )
 
 
 @app.get("/health")
