@@ -5,7 +5,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import Base, engine
-from app.routers import auth, users, dashboard, metrics, conversations, documents, agent, tomi, analytics, feedback
+from app.routers import auth, users, dashboard, metrics, conversations, documents, agent, tomi, analytics, feedback, health
 
 load_dotenv(override=True)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -35,7 +35,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-for r in [auth, users, dashboard, metrics, conversations, documents, agent, tomi, analytics, feedback]:
+for r in [auth, users, dashboard, metrics, conversations, documents, agent, tomi, analytics, feedback, health]:
     app.include_router(r.router)
 
 
@@ -48,8 +48,3 @@ async def _unhandled_exception_handler(request: Request, exc: Exception):
         status_code=500,
         content={"detail": "error interno", "path": str(request.url.path)},
     )
-
-
-@app.get("/health")
-def health():
-    return {"status": "ok", "brand": "Tomi · Babilonia", "version": "0.3.0"}

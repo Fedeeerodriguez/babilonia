@@ -42,10 +42,15 @@ Env vars nuevas en n8n: `WATI_SERVER`, `WATI_TOKEN` (además de `TOMI_API_URL`, 
 Pendiente de setup manual: reemplazar la credencial Postgres `REEMPLAZAR_POR_CREDENCIAL_SUPABASE`
 en los 3 nodos del trigger (no se puede dejar resuelto en el JSON).
 
-## 🟡 P2 — Observabilidad (pendiente)
-- [ ] `/health` real que chequee DBs + Notion + OpenAI.
-- [ ] Métricas de salud / alerta a un canal ante fallos.
-- [ ] Caché de Notion más agresivo (subir TTL/tamaño; eviction LRU).
+## 🟡 P2 — Observabilidad (parcial)
+- [x] **`/health/ready`** (`routers/health.py`): chequea las 2 DBs (con latencia) +
+      config de Notion/OpenAI. Devuelve **503** si una DB está caída → un monitor
+      (EasyPanel/uptime) puede alertar. `/health` queda como liveness simple.
+- [x] **Caché de Notion más agresivo**: TTL 90→300s, tamaño 1000→2000 y eviction
+      **LRU** (antes FIFO ingenua que descartaba lo más consultado). Stats ya expuestas
+      en `/api/tomi/cache/stats`.
+- [ ] Alerta a un canal (Slack/WhatsApp) ante fallos — requiere webhook del cliente.
+      Recomendado: apuntar un uptime monitor a `/health/ready`.
 
 ## 🟢 P3 — Resiliencia avanzada (pendiente)
 - [ ] Circuit breaker para Notion/OpenAI.

@@ -1,6 +1,7 @@
 """Caché in-memory con TTL para reducir hits a la API de Notion.
 
-Thread-safe. Sin dependencias externas. Evicción FIFO al alcanzar max_size.
+Thread-safe. Sin dependencias externas. Eviction LRU al alcanzar max_size
+(descarta lo menos usado recientemente, no lo más viejo a secas).
 """
 from __future__ import annotations
 
@@ -10,19 +11,21 @@ import logging
 import os
 import threading
 import time
+from collections import OrderedDict
 from typing import Any, Callable, Dict, Optional, Tuple
 
 log = logging.getLogger("tomi.cache")
 
-DEFAULT_TTL = int(os.getenv("TOMI_CACHE_TTL", "90"))
-DEFAULT_MAX_SIZE = int(os.getenv("TOMI_CACHE_MAX_SIZE", "1000"))
+# TTL más largo y caché más grande: descargan Notion en vez de competir con él.
+DEFAULT_TTL = int(os.getenv("TOMI_CACHE_TTL", "300"))
+DEFAULT_MAX_SIZE = int(os.getenv("TOMI_CACHE_MAX_SIZE", "2000"))
 
 
 class TTLCache:
-    """Caché simple con TTL por entrada y eviction FIFO."""
+    """Caché con TTL por entrada y eviction LRU."""
 
     def __init__(self, ttl_seconds: int = DEFAULT_TTL, max_size: int = DEFAULT_MAX_SIZE):
-        self._store: Dict[str, Tuple[Any, float]] = {}
+        self._store: "OrderedDict[str, Tuple[Any, float]]" = OrderedDict()
         self._lock = threading.Lock()
         self.ttl = ttl_seconds
         self.max_size = max_size
@@ -40,15 +43,17 @@ class TTLCache:
                 self._store.pop(key, None)
                 self._misses += 1
                 return None
+            self._store.move_to_end(key)  # marcar como usado recientemente (LRU)
             self._hits += 1
             return value
 
     def set(self, key: str, value: Any) -> None:
         with self._lock:
-            if len(self._store) >= self.max_size:
-                # FIFO: borrar el más viejo (menor expiry)
-                oldest_key = min(self._store, key=lambda k: self._store[k][1])
-                self._store.pop(oldest_key, None)
+            if key in self._store:
+                self._store.move_to_end(key)
+            elif len(self._store) >= self.max_size:
+                # LRU: descartar el menos usado recientemente (primero de la cola)
+                self._store.popitem(last=False)
             self._store[key] = (value, time.time() + self.ttl)
 
     def clear(self) -> None:
