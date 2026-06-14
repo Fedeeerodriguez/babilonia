@@ -22,10 +22,25 @@ Env vars nuevas (todas opcionales, ver `backend/.env.example`): `WEB_CONCURRENCY
 `KEEP_ALIVE`, `OPENAI_TIMEOUT`, `OPENAI_MAX_RETRIES`, `NOTION_TIMEOUT_MS`,
 `DB_POOL_SIZE`, `DB_MAX_OVERFLOW`, `DB_POOL_RECYCLE`, `DB_POOL_TIMEOUT`.
 
-## 🟠 P1 — Robustez de n8n (pendiente)
-- [ ] Retry + timeout en `Disparar Tomi` y nodos HTTP/Postgres de ingesta.
-- [ ] Lock real anti-doble-disparo con tabla `tomi_locks` (hoy hay race en ventana 23-24h).
-- [ ] Resolver credenciales placeholder y URLs hardcodeadas de WATI (multimedia).
+## ✅ P1 — Robustez de n8n (HECHO)
+
+- [x] **Lock real anti-doble-disparo** (`tomi_trigger_23h.json`): la query ahora hace
+      *claim atómico* en `tomi_locks` con `INSERT ... ON CONFLICT DO NOTHING RETURNING`,
+      así dos ticks simultáneos no disparan dos respuestas. Se agregó nodo
+      **Limpiar locks viejos** (borra locks > 2h → permite reintento si un disparo quedó colgado).
+- [x] **Retry + timeout en `Disparar Tomi`**: timeout 30s (antes 60s con `neverError`),
+      3 reintentos. Si falla definitivamente, una rama de error **libera el lock** para
+      reintentar en el próximo tick.
+- [x] **Ingesta tolerante a fallos** (`actualizacion_contexto_wati.json`): los 6 nodos
+      Postgres tienen `retryOnFail` (3 intentos) + `onError: continue`, así un hipo de la
+      DB no tira toda la ingesta.
+- [x] **WATI multimedia por `$env`** (`tomi_wati_multimedia.json`): URLs/token ya no
+      hardcodeados (`$env.WATI_SERVER` / `$env.WATI_TOKEN`), descargas con timeout 20s +
+      3 reintentos, y `Normalizar mensaje` ya no devuelve vacío en silencio.
+
+Env vars nuevas en n8n: `WATI_SERVER`, `WATI_TOKEN` (además de `TOMI_API_URL`, `TOMI_INTERNAL_KEY`).
+Pendiente de setup manual: reemplazar la credencial Postgres `REEMPLAZAR_POR_CREDENCIAL_SUPABASE`
+en los 3 nodos del trigger (no se puede dejar resuelto en el JSON).
 
 ## 🟡 P2 — Observabilidad (pendiente)
 - [ ] `/health` real que chequee DBs + Notion + OpenAI.

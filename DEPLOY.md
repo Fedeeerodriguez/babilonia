@@ -102,6 +102,8 @@ Todo vive en **EasyPanel** como servicios. Prefijo sugerido: `babilonia-`.
 | Variable | Valor |
 |---|---|
 | `TOMI_API_URL` | `https://api.babilonia.tudominio.com` |
+| `WATI_SERVER` | `https://live-mt-server.wati.io/<TENANT_ID>` (sin barra final) — solo si usás multimedia |
+| `WATI_TOKEN` | tu token de WATI — solo si usás multimedia |
 | `TOMI_INTERNAL_KEY` | **el mismo** que en el backend (paso 1) |
 
 ### Importar workflows (en orden)

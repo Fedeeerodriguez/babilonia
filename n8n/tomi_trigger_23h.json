@@ -7,14 +7,31 @@
       },
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [-480, 0],
+      "position": [-720, 0],
       "id": "trg-001",
       "name": "Cada 5 min"
     },
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "WITH last_user AS (\n  SELECT DISTINCT ON (wa_id)\n         wa_id, sender_name, content, created_at\n  FROM messages\n  WHERE direction = 'cliente'\n  ORDER BY wa_id, created_at DESC\n)\nSELECT lu.wa_id,\n       lu.sender_name,\n       lu.content    AS last_user_message,\n       lu.created_at AS user_at,\n       EXTRACT(EPOCH FROM (NOW() - lu.created_at))::int AS waited_seconds\nFROM last_user lu\nWHERE lu.created_at <= NOW() - INTERVAL '23 hours'\n  AND lu.created_at >  NOW() - INTERVAL '24 hours'\n  AND NOT EXISTS (\n    SELECT 1 FROM messages m\n    WHERE m.wa_id = lu.wa_id AND m.created_at > lu.created_at\n  )\nLIMIT 20;",
+        "query": "DELETE FROM tomi_locks WHERE acquired_at < NOW() - INTERVAL '2 hours';",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [-480, 0],
+      "id": "pg-clean-locks",
+      "name": "Limpiar locks viejos",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "postgres": { "id": "REEMPLAZAR_POR_CREDENCIAL_SUPABASE", "name": "Supabase Postgres" }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH last_user AS (\n  SELECT DISTINCT ON (wa_id)\n         wa_id, sender_name, content, created_at\n  FROM messages\n  WHERE direction = 'cliente'\n  ORDER BY wa_id, created_at DESC\n),\ncandidates AS (\n  SELECT lu.wa_id, lu.sender_name, lu.content, lu.created_at\n  FROM last_user lu\n  WHERE lu.created_at <= NOW() - INTERVAL '23 hours'\n    AND lu.created_at >  NOW() - INTERVAL '24 hours'\n    AND NOT EXISTS (\n      SELECT 1 FROM messages m\n      WHERE m.wa_id = lu.wa_id AND m.created_at > lu.created_at\n    )\n),\nlocked AS (\n  INSERT INTO tomi_locks (wa_id)\n  SELECT wa_id FROM candidates\n  ON CONFLICT (wa_id) DO NOTHING\n  RETURNING wa_id\n)\nSELECT c.wa_id,\n       c.sender_name,\n       c.content    AS last_user_message,\n       c.created_at AS user_at,\n       EXTRACT(EPOCH FROM (NOW() - c.created_at))::int AS waited_seconds\nFROM candidates c\nJOIN locked l ON l.wa_id = c.wa_id\nLIMIT 20;",
         "options": {}
       },
       "type": "n8n-nodes-base.postgres",
@@ -22,6 +39,8 @@
       "position": [-240, 0],
       "id": "pg-find-001",
       "name": "Buscar candidatos",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
       "credentials": {
         "postgres": { "id": "REEMPLAZAR_POR_CREDENCIAL_SUPABASE", "name": "Supabase Postgres" }
       }
@@ -63,19 +82,41 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ wa_id: $json.wa_id, sender_name: $json.sender_name, last_user_message: $json.last_user_message, user_at: $json.user_at, waited_seconds: $json.waited_seconds }) }}",
         "options": {
-          "timeout": 60000,
-          "response": { "response": { "neverError": true } }
+          "timeout": 30000
         }
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [240, 0],
+      "position": [240, -120],
       "id": "http-tomi-001",
-      "name": "Disparar Tomi"
+      "name": "Disparar Tomi",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "DELETE FROM tomi_locks WHERE wa_id = $1;",
+        "options": { "queryReplacement": "={{ $json.wa_id }}" }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [480, 80],
+      "id": "pg-release-lock",
+      "name": "Liberar lock (fallo disparo)",
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "postgres": { "id": "REEMPLAZAR_POR_CREDENCIAL_SUPABASE", "name": "Supabase Postgres" }
+      }
     }
   ],
   "connections": {
     "Cada 5 min": {
+      "main": [[{ "node": "Limpiar locks viejos", "type": "main", "index": 0 }]]
+    },
+    "Limpiar locks viejos": {
       "main": [[{ "node": "Buscar candidatos", "type": "main", "index": 0 }]]
     },
     "Buscar candidatos": {
@@ -85,6 +126,12 @@
       "main": [
         [{ "node": "Disparar Tomi", "type": "main", "index": 0 }],
         []
+      ]
+    },
+    "Disparar Tomi": {
+      "main": [
+        [],
+        [{ "node": "Liberar lock (fallo disparo)", "type": "main", "index": 0 }]
       ]
     }
   },

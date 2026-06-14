@@ -77,9 +77,16 @@ Si tu Tomi tiene otro trigger (por ejemplo el webhook directo de WATI), podés d
 ### 4. Importar `tomi_trigger_23h.json`
 
 Antes de activarlo:
-1. En los 2 nodos Postgres (`Limpiar locks viejos` y `Buscar y bloquear conversaciones`), reemplazá la credencial por **Supabase Postgres** (paso 1). En el JSON quedó como placeholder `REEMPLAZAR_POR_CREDENCIAL_SUPABASE`.
+1. En los **3 nodos Postgres** (`Limpiar locks viejos`, `Buscar candidatos`, `Liberar lock (fallo disparo)`), reemplazá la credencial por **Supabase Postgres** (paso 1). En el JSON quedó como placeholder `REEMPLAZAR_POR_CREDENCIAL_SUPABASE`.
 2. En el nodo `Disparar Tomi`, ajustá la URL si tu n8n no es `n8n.babilonia.ai`. La URL correcta la ves en el workflow `tomi unificado` → click en el nodo `Webhook Tomi (trigger 23h)` → "Test URL" / "Production URL".
 3. Activá el workflow.
+
+> **Anti-doble-disparo (P1):** el nodo `Buscar candidatos` ahora hace un *claim atómico* en
+> `tomi_locks` (`INSERT ... ON CONFLICT DO NOTHING RETURNING`), así dos ejecuciones simultáneas
+> no pueden disparar la misma conversación dos veces. `Limpiar locks viejos` borra locks de más
+> de 2h (por si un disparo quedó colgado), y si `Disparar Tomi` falla tras 3 reintentos, la rama
+> de error libera el lock para reintentar en el próximo tick. Requiere la tabla `tomi_locks`
+> (ya está en `db/schema.sql`).
 
 ## Cómo verificar que funciona
 
