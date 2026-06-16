@@ -110,6 +110,29 @@
       "credentials": {
         "postgres": { "id": "REEMPLAZAR_POR_CREDENCIAL_SUPABASE", "name": "Supabase Postgres" }
       }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.TOMI_API_URL }}/api/tomi/dispatch-failed",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-Tomi-Key", "value": "={{ $env.TOMI_INTERNAL_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ wa_id: $json.wa_id, sender_name: $json.sender_name, last_user_message: $json.last_user_message, reason: ($json.error && $json.error.message) || 'disparo fallo tras 3 reintentos' }) }}",
+        "options": { "timeout": 15000 }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [720, 80],
+      "id": "http-deadletter",
+      "name": "Registrar fallo (dead-letter)",
+      "onError": "continueRegularOutput"
     }
   ],
   "connections": {
@@ -133,6 +156,9 @@
         [],
         [{ "node": "Liberar lock (fallo disparo)", "type": "main", "index": 0 }]
       ]
+    },
+    "Liberar lock (fallo disparo)": {
+      "main": [[{ "node": "Registrar fallo (dead-letter)", "type": "main", "index": 0 }]]
     }
   },
   "active": false,

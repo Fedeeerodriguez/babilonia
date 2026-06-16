@@ -23,6 +23,7 @@ from notion_client import Client
 from notion_client.errors import APIResponseError
 
 from app.services.tomi.cache import notion_cache, hash_key
+from app.services.tomi.circuit import CircuitBreaker, CircuitOpenError
 
 log = logging.getLogger("tomi.notion")
 
@@ -89,31 +90,50 @@ def _client() -> Client:
     )
 
 
+notion_breaker = CircuitBreaker(
+    "notion",
+    fail_threshold=int(os.getenv("NOTION_CB_THRESHOLD", "6")),
+    cooldown=float(os.getenv("NOTION_CB_COOLDOWN", "30")),
+)
+
+
 def _retry_429(fn, *args, max_attempts: int = 4, **kwargs):
-    """Wrapper con backoff exponencial ante rate-limit de Notion (429)."""
+    """Wrapper con backoff exponencial ante rate-limit de Notion (429) + circuit
+    breaker: si Notion está caído, corta rápido en vez de seguir golpeando."""
     import time as _t
+
+    if not notion_breaker.allow():
+        raise CircuitOpenError("Notion no disponible (circuit abierto)")
+
     delay = 1.0
     for attempt in range(max_attempts):
         try:
-            return fn(*args, **kwargs)
+            result = fn(*args, **kwargs)
+            notion_breaker.record_success()
+            return result
         except APIResponseError as e:
             if getattr(e, "status", None) == 429 or "rate" in str(e).lower():
                 log.warning("Notion 429 — retry %d/%d en %.1fs", attempt + 1, max_attempts, delay)
                 _t.sleep(delay)
                 delay *= 2
                 continue
+            notion_breaker.record_failure()
             raise
         except Exception as e:
             if "rate" in str(e).lower() or "429" in str(e):
                 _t.sleep(delay)
                 delay *= 2
                 continue
+            notion_breaker.record_failure()
             raise
     # Último intento: si vuelve a fallar por rate-limit, propagamos un error claro
     # en vez de dejar escapar la excepción cruda del SDK.
     try:
-        return fn(*args, **kwargs)
+        result = fn(*args, **kwargs)
+        notion_breaker.record_success()
+        return result
     except Exception as e:
+        notion_breaker.record_failure()
         log.error("Notion sigue fallando tras %d reintentos: %s", max_attempts, e)
         raise
 

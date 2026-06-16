@@ -52,6 +52,9 @@ class TomiSafeRoute(APIRoute):
 
         return handler
 
+from datetime import datetime, timezone
+
+from app import models
 from app.database import get_db, get_docs_db
 from app.services.tomi import notion_client as nc
 from app.services.tomi import bases_datos as bd
@@ -430,7 +433,7 @@ def memorias_listar_tablas(
 @router.get("/cache/stats")
 def cache_stats(x_tomi_key: Optional[str] = Header(default=None)):
     _auth(x_tomi_key)
-    return notion_cache.stats()
+    return {"cache": notion_cache.stats(), "notion_circuit": nc.notion_breaker.state()}
 
 
 @router.post("/cache/clear")
@@ -438,6 +441,79 @@ def cache_clear(x_tomi_key: Optional[str] = Header(default=None)):
     _auth(x_tomi_key)
     notion_cache.clear()
     return {"cleared": True}
+
+
+# ---------- Dead-letter: disparos de Tomi que fallaron (trigger 23h) ----------
+
+class DispatchFailedIn(BaseModel):
+    wa_id: str
+    sender_name: Optional[str] = None
+    last_user_message: Optional[str] = None
+    reason: Optional[str] = None
+
+
+@router.post("/dispatch-failed")
+def dispatch_failed(
+    body: DispatchFailedIn,
+    db: Session = Depends(get_db),
+    x_tomi_key: Optional[str] = Header(default=None),
+):
+    """n8n llama acá cuando un disparo del trigger 23h falla definitivamente.
+    Hace upsert por wa_id sin resolver: incrementa intentos en vez de duplicar."""
+    _auth(x_tomi_key)
+    existing = (
+        db.query(models.FailedDispatch)
+        .filter(models.FailedDispatch.wa_id == body.wa_id,
+                models.FailedDispatch.resolved == False)  # noqa: E712
+        .order_by(models.FailedDispatch.created_at.desc())
+        .first()
+    )
+    now = datetime.now(timezone.utc)
+    if existing:
+        existing.attempts = (existing.attempts or 1) + 1
+        existing.reason = body.reason
+        existing.last_attempt_at = now
+        existing.last_user_message = body.last_user_message or existing.last_user_message
+    else:
+        existing = models.FailedDispatch(
+            wa_id=body.wa_id,
+            sender_name=body.sender_name,
+            last_user_message=body.last_user_message,
+            reason=body.reason,
+            attempts=1,
+            last_attempt_at=now,
+        )
+        db.add(existing)
+    db.commit()
+    db.refresh(existing)
+    return {"id": existing.id, "wa_id": existing.wa_id, "attempts": existing.attempts}
+
+
+@router.get("/dispatch-failed")
+def list_dispatch_failed(
+    include_resolved: bool = False,
+    limit: int = 50,
+    db: Session = Depends(get_db),
+    x_tomi_key: Optional[str] = Header(default=None),
+):
+    """Lista los disparos fallidos pendientes (para seguimiento humano)."""
+    _auth(x_tomi_key)
+    q = db.query(models.FailedDispatch)
+    if not include_resolved:
+        q = q.filter(models.FailedDispatch.resolved == False)  # noqa: E712
+    rows = q.order_by(models.FailedDispatch.last_attempt_at.desc()).limit(min(limit, 200)).all()
+    return {
+        "count": len(rows),
+        "items": [
+            {
+                "id": r.id, "wa_id": r.wa_id, "sender_name": r.sender_name,
+                "last_user_message": r.last_user_message, "reason": r.reason,
+                "attempts": r.attempts, "resolved": r.resolved,
+                "last_attempt_at": r.last_attempt_at.isoformat() if r.last_attempt_at else None,
+            }
+            for r in rows
+        ],
+    }
 
 
 # ---------- Debug: ver schema de una DB Notion ----------

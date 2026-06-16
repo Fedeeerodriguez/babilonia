@@ -93,3 +93,19 @@ create table if not exists public.sandbox_feedback (
 );
 create index if not exists idx_sandboxfb_status on public.sandbox_feedback (status, created_at desc);
 create index if not exists idx_sandboxfb_rating on public.sandbox_feedback (rating);
+
+-- ─── tomi_failed_dispatches: dead-letter de disparos del trigger 23h que fallaron
+-- También la crea SQLAlchemy (create_all); DDL para referencia / Supabase limpio.
+create table if not exists public.tomi_failed_dispatches (
+  id                bigserial primary key,
+  wa_id             text not null,
+  sender_name       text,
+  last_user_message text,
+  reason            text,
+  attempts          integer default 1,
+  resolved          boolean default false,
+  created_at        timestamptz not null default now(),
+  last_attempt_at   timestamptz default now()
+);
+create index if not exists idx_faileddisp_pending on public.tomi_failed_dispatches (resolved, last_attempt_at desc);
+create index if not exists idx_faileddisp_waid on public.tomi_failed_dispatches (wa_id);

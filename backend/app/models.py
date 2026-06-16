@@ -105,3 +105,22 @@ class SandboxFeedback(Base):
     promoted_doc_source = Column(String)           # source con que se cargó al vector store
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow, index=True)
     reviewed_at = Column(DateTime(timezone=True))
+
+
+class FailedDispatch(Base):
+    """Dead-letter: disparos del trigger 23h que fallaron definitivamente.
+
+    Cuando n8n no logra entregarle a Tomi una conversación pendiente (webhook
+    caído, etc.), lo registra acá para que no se pierda en silencio y un humano
+    pueda hacer el seguimiento.
+    """
+    __tablename__ = "tomi_failed_dispatches"
+    id = Column(PK, primary_key=True, autoincrement=True)
+    wa_id = Column(String, nullable=False, index=True)
+    sender_name = Column(String)
+    last_user_message = Column(Text)
+    reason = Column(Text)                              # mensaje de error / motivo
+    attempts = Column(Integer, default=1)
+    resolved = Column(Boolean, default=False, index=True)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, index=True)
+    last_attempt_at = Column(DateTime(timezone=True), default=datetime.utcnow)

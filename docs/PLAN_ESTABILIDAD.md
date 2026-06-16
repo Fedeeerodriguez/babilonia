@@ -52,7 +52,21 @@ en los 3 nodos del trigger (no se puede dejar resuelto en el JSON).
 - [ ] Alerta a un canal (Slack/WhatsApp) ante fallos — requiere webhook del cliente.
       Recomendado: apuntar un uptime monitor a `/health/ready`.
 
-## 🟢 P3 — Resiliencia avanzada (pendiente)
-- [ ] Circuit breaker para Notion/OpenAI.
-- [ ] Dead-letter / reintento para respuestas del trigger 23h.
-- [ ] "No sé / escalar a humano" cuando la confianza es baja.
+## ✅ P3 — Resiliencia avanzada (HECHO)
+- [x] **Circuit breaker para Notion** (`services/tomi/circuit.py` + `_retry_429`): tras
+      N fallos seguidos abre y corta rápido durante un cooldown (no amontona workers
+      esperando timeouts); half-open prueba una llamada y cierra al recuperarse. Estado
+      visible en `GET /api/tomi/cache/stats` (`notion_circuit`). Env: `NOTION_CB_THRESHOLD`,
+      `NOTION_CB_COOLDOWN`.
+- [x] **Dead-letter de disparos perdidos**: tabla `tomi_failed_dispatches` + endpoints
+      `POST/GET /api/tomi/dispatch-failed`. El trigger 23h, cuando un disparo falla tras
+      reintentos, libera el lock **y** registra el fallo (upsert por wa_id, suma intentos)
+      para seguimiento humano. Antes se perdía en silencio.
+- [x] **"No sé honesto"** en el chat de la plataforma (`routers/agent.py`): regla de no
+      inventar, decir "no encontré / no pude consultar" y sugerir escalar a humano.
+      Guía equivalente para el prompt del bot de n8n en `docs/PROMPT_TOMI_HONESTO.md`.
+
+## Pendiente (no es código)
+- [ ] Correr `db/schema.sql` actualizado (agrega `tomi_failed_dispatches`).
+- [ ] Re-deploy backend + re-importar `tomi_trigger_23h.json` (trae el nodo dead-letter).
+- [ ] Pegar la guía de honestidad en el system prompt del bot `tomi unificado` (n8n).
