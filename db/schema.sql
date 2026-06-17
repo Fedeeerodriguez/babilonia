@@ -80,10 +80,11 @@ create table if not exists public.sandbox_feedback (
   pregunta             text not null,
   respuesta_tomi       text,
   respuesta_corregida  text,
-  rating               text,                      -- good | bad | null
+  rating               text,                      -- good | mejorable | bad | null
   status               text default 'pending',    -- pending | reviewed | promoted
   canal                text,                       -- sandbox | whatsapp | mail | discord
   source               text,                       -- plu3 | patrimonial | educacion | plu | plu4
+  publico              text,                       -- cliente | asesor | prospecto | estudiante | otro
   tags                 jsonb,
   user_email           text,
   reviewed_by          text,
@@ -93,6 +94,7 @@ create table if not exists public.sandbox_feedback (
 );
 create index if not exists idx_sandboxfb_status on public.sandbox_feedback (status, created_at desc);
 create index if not exists idx_sandboxfb_rating on public.sandbox_feedback (rating);
+create index if not exists idx_sandboxfb_publico on public.sandbox_feedback (publico);
 
 -- ─── tomi_failed_dispatches: dead-letter de disparos del trigger 23h que fallaron
 -- También la crea SQLAlchemy (create_all); DDL para referencia / Supabase limpio.

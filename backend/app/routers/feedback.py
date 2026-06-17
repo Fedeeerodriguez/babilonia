@@ -49,6 +49,7 @@ def log_interaction(
         respuesta_tomi=body.respuesta_tomi,
         canal=body.canal,
         source=body.source,
+        publico=body.publico,
         user_email=body.user_email,
         status=models.FeedbackStatus.pending.value,
     )
@@ -61,8 +62,9 @@ def log_interaction(
 @router.get("", response_model=List[schemas.FeedbackOut])
 def list_feedback(
     status: Optional[str] = Query(None, description="pending | reviewed | promoted"),
-    rating: Optional[str] = Query(None, description="good | bad"),
+    rating: Optional[str] = Query(None, description="good | mejorable | bad"),
     canal: Optional[str] = None,
+    publico: Optional[str] = Query(None, description="cliente | asesor | prospecto | estudiante | otro"),
     limit: int = Query(50, le=200),
     offset: int = 0,
     db: Session = Depends(get_db),
@@ -75,6 +77,8 @@ def list_feedback(
         q = q.filter(models.SandboxFeedback.rating == rating)
     if canal:
         q = q.filter(models.SandboxFeedback.canal == canal)
+    if publico:
+        q = q.filter(models.SandboxFeedback.publico == publico)
     return (
         q.order_by(models.SandboxFeedback.created_at.desc())
         .offset(offset)
@@ -95,13 +99,15 @@ def review_feedback(
     if not fb:
         raise HTTPException(404, "Feedback no encontrado")
     if body.rating is not None:
-        if body.rating not in ("good", "bad"):
-            raise HTTPException(400, "rating debe ser 'good' o 'bad'")
+        if body.rating not in ("good", "mejorable", "bad"):
+            raise HTTPException(400, "rating debe ser 'good', 'mejorable' o 'bad'")
         fb.rating = body.rating
     if body.respuesta_corregida is not None:
         fb.respuesta_corregida = body.respuesta_corregida
     if body.tags is not None:
         fb.tags = body.tags
+    if body.publico is not None:
+        fb.publico = body.publico
     fb.status = models.FeedbackStatus.reviewed.value
     fb.reviewed_by = user.email
     fb.reviewed_at = datetime.now(timezone.utc)
@@ -168,15 +174,37 @@ def feedback_stats(
     revisadas = sum(1 for r in rows if r.status == models.FeedbackStatus.reviewed.value)
     promovidas = sum(1 for r in rows if r.status == models.FeedbackStatus.promoted.value)
     good = sum(1 for r in rows if r.rating == "good")
+    mejorable = sum(1 for r in rows if r.rating == "mejorable")
     bad = sum(1 for r in rows if r.rating == "bad")
-    calificadas = good + bad
+    # "Correctas a la primera" = good sobre el total de calificadas (la métrica de la Semana 1).
+    calificadas = good + mejorable + bad
     tasa = round(good / calificadas, 3) if calificadas else 0.0
 
     tag_counter: Counter = Counter()
     for r in rows:
-        if r.rating == "bad" and isinstance(r.tags, list):
+        if r.rating in ("bad", "mejorable") and isinstance(r.tags, list):
             tag_counter.update(r.tags)
     top_tags = [{"tag": t, "count": c} for t, c in tag_counter.most_common(10)]
+
+    # Desglose por tipo de público (entregable del Martes / línea base del Viernes).
+    pub_stats: dict = {}
+    for r in rows:
+        if r.rating not in ("good", "mejorable", "bad"):
+            continue
+        p = r.publico or "sin_clasificar"
+        s = pub_stats.setdefault(p, {"good": 0, "mejorable": 0, "bad": 0})
+        s[r.rating] += 1
+    por_publico = []
+    for p, s in sorted(pub_stats.items()):
+        tot = s["good"] + s["mejorable"] + s["bad"]
+        por_publico.append({
+            "publico": p,
+            "total": tot,
+            "good": s["good"],
+            "mejorable": s["mejorable"],
+            "bad": s["bad"],
+            "tasa": round(s["good"] / tot, 3) if tot else 0.0,
+        })
 
     return schemas.FeedbackStats(
         total=total,
@@ -184,9 +212,11 @@ def feedback_stats(
         revisadas=revisadas,
         promovidas=promovidas,
         good=good,
+        mejorable=mejorable,
         bad=bad,
         tasa_aprobacion=tasa,
         top_tags_malos=top_tags,
+        por_publico=por_publico,
     )
 
 
@@ -210,6 +240,7 @@ def export_dataset(
             "pregunta": r.pregunta,
             "respuesta": respuesta or r.respuesta_tomi,
             "source": r.source,
+            "publico": r.publico,
             "rating": r.rating,
             "fue_corregida": bool(r.respuesta_corregida),
         })

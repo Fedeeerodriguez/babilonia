@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { LogOut, MessageCircle, Search } from 'lucide-react'
+import { LogOut, MessageCircle, Search, Menu } from 'lucide-react'
 import api from '../utils/api'
 import { useAuth } from '../context/AuthContext'
 import Logo from './Logo'
 
-export default function HUD() {
+export default function HUD({ onMenu }) {
   const { user, logout } = useAuth()
   const [hud, setHud] = useState(null)
   const nav = useNavigate()
@@ -19,7 +19,16 @@ export default function HUD() {
 
   return (
     <header className="sticky top-0 z-40 glass border-b border-border/60">
-      <div className="px-6 h-12 flex items-center gap-8">
+      <div className="px-4 sm:px-6 h-12 flex items-center gap-4 sm:gap-8">
+        {onMenu && (
+          <button
+            onClick={onMenu}
+            title="Menú"
+            className="lg:hidden p-2 -ml-1 rounded-full text-muted hover:bg-bone-200/70 hover:text-deep transition"
+          >
+            <Menu size={18} />
+          </button>
+        )}
         <button onClick={() => nav('/dashboard')} className="flex items-center transition hover:opacity-70">
           <Logo size="sm" />
         </button>

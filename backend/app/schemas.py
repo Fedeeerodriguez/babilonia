@@ -121,14 +121,16 @@ class FeedbackLogIn(BaseModel):
     respuesta_tomi: Optional[str] = None
     canal: str = "sandbox"
     source: Optional[str] = None
+    publico: Optional[str] = None    # cliente | asesor | prospecto | estudiante | otro
     user_email: Optional[str] = None
 
 
 class FeedbackReviewIn(BaseModel):
     """El admin califica y/o corrige una interacción."""
-    rating: Optional[str] = Field(None, description="good | bad")
+    rating: Optional[str] = Field(None, description="good | mejorable | bad")
     respuesta_corregida: Optional[str] = None
     tags: Optional[List[str]] = None
+    publico: Optional[str] = None    # permite corregir el público desde la revisión
 
 
 class FeedbackOut(BaseModel):
@@ -140,6 +142,7 @@ class FeedbackOut(BaseModel):
     status: str
     canal: Optional[str]
     source: Optional[str]
+    publico: Optional[str]
     tags: Optional[List[str]]
     user_email: Optional[str]
     reviewed_by: Optional[str]
@@ -157,6 +160,8 @@ class FeedbackStats(BaseModel):
     revisadas: int
     promovidas: int
     good: int
+    mejorable: int
     bad: int
-    tasa_aprobacion: float
+    tasa_aprobacion: float                 # good / calificadas (correctas a la primera)
     top_tags_malos: List[dict]
+    por_publico: List[dict]                # [{publico, total, good, mejorable, bad, tasa}]

@@ -95,10 +95,11 @@ class SandboxFeedback(Base):
     pregunta = Column(Text, nullable=False)
     respuesta_tomi = Column(Text)
     respuesta_corregida = Column(Text)
-    rating = Column(String, index=True)            # good | bad | None
+    rating = Column(String, index=True)            # good | mejorable | bad | None
     status = Column(String, default=FeedbackStatus.pending.value, index=True)
     canal = Column(String, index=True)             # sandbox | whatsapp | mail | discord
     source = Column(String, index=True)            # plu3 | patrimonial | educacion | plu | plu4
+    publico = Column(String, index=True)           # cliente | asesor | prospecto | estudiante | otro
     tags = Column(JSON)                            # ["tono", "dato_incorrecto", ...]
     user_email = Column(String)                    # quién le escribió a Tomi
     reviewed_by = Column(String)                   # admin que revisó
