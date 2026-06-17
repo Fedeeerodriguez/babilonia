@@ -1,0 +1,102 @@
+{
+  "name": "Tomi · Log feedback sandbox",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-trigger-fb",
+      "name": "Probar manualmente",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-1200, 400]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1",
+              "name": "pregunta",
+              "value": "={{ $json.pregunta || 'pregunta de ejemplo' }}",
+              "type": "string"
+            },
+            {
+              "id": "a2",
+              "name": "respuesta_tomi",
+              "value": "={{ $json.respuesta_tomi || 'respuesta de ejemplo de Tomi' }}",
+              "type": "string"
+            },
+            {
+              "id": "a3",
+              "name": "canal",
+              "value": "sandbox",
+              "type": "string"
+            },
+            {
+              "id": "a4",
+              "name": "source",
+              "value": "={{ $json.source || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "a5",
+              "name": "user_email",
+              "value": "={{ $json.user_email || '' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-fb-fields",
+      "name": "Armar payload",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-980, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.TOMI_API_URL }}/api/feedback/log",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Tomi-Key",
+              "value": "={{ $env.TOMI_INTERNAL_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  pregunta: $json.pregunta,\n  respuesta_tomi: $json.respuesta_tomi,\n  canal: $json.canal,\n  source: $json.source || null,\n  user_email: $json.user_email || null\n}) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "http-feedback-log",
+      "name": "Registrar feedback (Tomi)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-760, 400]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Probar manualmente": {
+      "main": [[{ "node": "Armar payload", "type": "main", "index": 0 }]]
+    },
+    "Armar payload": {
+      "main": [[{ "node": "Registrar feedback (Tomi)", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "feedback-log-v1",
+  "meta": { "templateCredsSetupCompleted": true },
+  "id": "TomiFeedbackLog",
+  "tags": [{ "name": "tomi" }]
+}

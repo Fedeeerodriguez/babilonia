@@ -75,3 +75,53 @@ class AgentChatMessage(Base):
     content = Column(Text)
     tool_calls = Column(JSON)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow, index=True)
+
+
+class FeedbackStatus(str, Enum):
+    pending = "pending"      # registrada, esperando revisión del admin
+    reviewed = "reviewed"    # el admin la calificó / corrigió
+    promoted = "promoted"    # la corrección se cargó al vector store (conocimiento)
+
+
+class SandboxFeedback(Base):
+    """Interacciones del sandbox de Tomi + correcciones de los admins.
+
+    Cierra el loop de mejora: cada respuesta de Tomi se registra, un admin la
+    califica/corrige, y las correcciones aprobadas se promueven al vector store
+    para que Tomi aprenda. También sirve como dataset Q/A exportable.
+    """
+    __tablename__ = "sandbox_feedback"
+    id = Column(PK, primary_key=True, autoincrement=True)
+    pregunta = Column(Text, nullable=False)
+    respuesta_tomi = Column(Text)
+    respuesta_corregida = Column(Text)
+    rating = Column(String, index=True)            # good | mejorable | bad | None
+    status = Column(String, default=FeedbackStatus.pending.value, index=True)
+    canal = Column(String, index=True)             # sandbox | whatsapp | mail | discord
+    source = Column(String, index=True)            # plu3 | patrimonial | educacion | plu | plu4
+    publico = Column(String, index=True)           # cliente | asesor | prospecto | estudiante | otro
+    tags = Column(JSON)                            # ["tono", "dato_incorrecto", ...]
+    user_email = Column(String)                    # quién le escribió a Tomi
+    reviewed_by = Column(String)                   # admin que revisó
+    promoted_doc_source = Column(String)           # source con que se cargó al vector store
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, index=True)
+    reviewed_at = Column(DateTime(timezone=True))
+
+
+class FailedDispatch(Base):
+    """Dead-letter: disparos del trigger 23h que fallaron definitivamente.
+
+    Cuando n8n no logra entregarle a Tomi una conversación pendiente (webhook
+    caído, etc.), lo registra acá para que no se pierda en silencio y un humano
+    pueda hacer el seguimiento.
+    """
+    __tablename__ = "tomi_failed_dispatches"
+    id = Column(PK, primary_key=True, autoincrement=True)
+    wa_id = Column(String, nullable=False, index=True)
+    sender_name = Column(String)
+    last_user_message = Column(Text)
+    reason = Column(Text)                              # mensaje de error / motivo
+    attempts = Column(Integer, default=1)
+    resolved = Column(Boolean, default=False, index=True)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, index=True)
+    last_attempt_at = Column(DateTime(timezone=True), default=datetime.utcnow)

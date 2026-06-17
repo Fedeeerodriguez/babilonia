@@ -8,13 +8,53 @@ Auth: header `X-Tomi-Key` con TOMI_INTERNAL_KEY (env).
 """
 from __future__ import annotations
 
+import logging
 import os
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from fastapi.routing import APIRoute
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+log = logging.getLogger("tomi.api")
+
+
+class TomiSafeRoute(APIRoute):
+    """Route class para los endpoints del bot: si la lógica tira una excepción
+    inesperada (Notion caído, OpenAI, DB), devuelve 200 con un envelope de error
+    en vez de 500. Así Tomi (n8n) siempre recibe una respuesta procesable y puede
+    decirle algo al usuario en lugar de romperse.
+
+    Las HTTPException (401/400/404) y errores de validación (422) se respetan.
+    """
+
+    def get_route_handler(self):
+        original = super().get_route_handler()
+
+        async def handler(request: Request) -> Response:
+            try:
+                return await original(request)
+            except (HTTPException, RequestValidationError):
+                raise
+            except Exception as e:  # noqa: BLE001
+                log.exception("Endpoint Tomi %s falló: %s", request.url.path, e)
+                return JSONResponse(
+                    status_code=200,
+                    content={
+                        "results": [],
+                        "error": "servicio temporalmente no disponible, reintentá en unos segundos",
+                        "detail": str(e),
+                    },
+                )
+
+        return handler
+
+from datetime import datetime, timezone
+
+from app import models
 from app.database import get_db, get_docs_db
 from app.services.tomi import notion_client as nc
 from app.services.tomi import bases_datos as bd
@@ -26,7 +66,7 @@ from app.services.tomi import clasificador as clasif
 from app.services.tomi import notion_scanner as nscan
 from app.services.tomi.cache import notion_cache
 
-router = APIRouter(prefix="/api/tomi", tags=["tomi"])
+router = APIRouter(prefix="/api/tomi", tags=["tomi"], route_class=TomiSafeRoute)
 
 INTERNAL_KEY = os.getenv("TOMI_INTERNAL_KEY", "")
 
@@ -61,6 +101,12 @@ class EmisionesIn(BaseModel):
 
 class CobranzasIn(BaseModel):
     poliza: str
+
+
+class DiasAtrasoIn(BaseModel):
+    poliza: Optional[str] = Field(None, description="Número de póliza exacto, si se conoce")
+    email_cliente: Optional[str] = Field(None, description="Email del cliente")
+    cliente: Optional[str] = Field(None, description="Nombre del cliente (búsqueda parcial)")
 
 
 class TicketsAllianzIn(BaseModel):
@@ -178,6 +224,19 @@ def emisiones(body: EmisionesIn, x_tomi_key: Optional[str] = Header(default=None
 def cobranzas(body: CobranzasIn, x_tomi_key: Optional[str] = Header(default=None)):
     _auth(x_tomi_key)
     return {"results": nc.buscar_cobranzas_por_poliza(body.poliza)}
+
+
+@router.post("/dias-atraso")
+def dias_atraso(body: DiasAtrasoIn, x_tomi_key: Optional[str] = Header(default=None)):
+    """Cuántos días de atraso (y monto faltante) tiene un cliente o póliza."""
+    _auth(x_tomi_key)
+    if not (body.poliza or body.email_cliente or body.cliente):
+        raise HTTPException(status_code=400, detail="Requiere poliza, email_cliente o cliente")
+    return nc.dias_de_atraso(
+        poliza=body.poliza,
+        email_cliente=body.email_cliente,
+        cliente=body.cliente,
+    )
 
 
 @router.post("/tickets-allianz")
@@ -374,7 +433,7 @@ def memorias_listar_tablas(
 @router.get("/cache/stats")
 def cache_stats(x_tomi_key: Optional[str] = Header(default=None)):
     _auth(x_tomi_key)
-    return notion_cache.stats()
+    return {"cache": notion_cache.stats(), "notion_circuit": nc.notion_breaker.state()}
 
 
 @router.post("/cache/clear")
@@ -382,6 +441,79 @@ def cache_clear(x_tomi_key: Optional[str] = Header(default=None)):
     _auth(x_tomi_key)
     notion_cache.clear()
     return {"cleared": True}
+
+
+# ---------- Dead-letter: disparos de Tomi que fallaron (trigger 23h) ----------
+
+class DispatchFailedIn(BaseModel):
+    wa_id: str
+    sender_name: Optional[str] = None
+    last_user_message: Optional[str] = None
+    reason: Optional[str] = None
+
+
+@router.post("/dispatch-failed")
+def dispatch_failed(
+    body: DispatchFailedIn,
+    db: Session = Depends(get_db),
+    x_tomi_key: Optional[str] = Header(default=None),
+):
+    """n8n llama acá cuando un disparo del trigger 23h falla definitivamente.
+    Hace upsert por wa_id sin resolver: incrementa intentos en vez de duplicar."""
+    _auth(x_tomi_key)
+    existing = (
+        db.query(models.FailedDispatch)
+        .filter(models.FailedDispatch.wa_id == body.wa_id,
+                models.FailedDispatch.resolved == False)  # noqa: E712
+        .order_by(models.FailedDispatch.created_at.desc())
+        .first()
+    )
+    now = datetime.now(timezone.utc)
+    if existing:
+        existing.attempts = (existing.attempts or 1) + 1
+        existing.reason = body.reason
+        existing.last_attempt_at = now
+        existing.last_user_message = body.last_user_message or existing.last_user_message
+    else:
+        existing = models.FailedDispatch(
+            wa_id=body.wa_id,
+            sender_name=body.sender_name,
+            last_user_message=body.last_user_message,
+            reason=body.reason,
+            attempts=1,
+            last_attempt_at=now,
+        )
+        db.add(existing)
+    db.commit()
+    db.refresh(existing)
+    return {"id": existing.id, "wa_id": existing.wa_id, "attempts": existing.attempts}
+
+
+@router.get("/dispatch-failed")
+def list_dispatch_failed(
+    include_resolved: bool = False,
+    limit: int = 50,
+    db: Session = Depends(get_db),
+    x_tomi_key: Optional[str] = Header(default=None),
+):
+    """Lista los disparos fallidos pendientes (para seguimiento humano)."""
+    _auth(x_tomi_key)
+    q = db.query(models.FailedDispatch)
+    if not include_resolved:
+        q = q.filter(models.FailedDispatch.resolved == False)  # noqa: E712
+    rows = q.order_by(models.FailedDispatch.last_attempt_at.desc()).limit(min(limit, 200)).all()
+    return {
+        "count": len(rows),
+        "items": [
+            {
+                "id": r.id, "wa_id": r.wa_id, "sender_name": r.sender_name,
+                "last_user_message": r.last_user_message, "reason": r.reason,
+                "attempts": r.attempts, "resolved": r.resolved,
+                "last_attempt_at": r.last_attempt_at.isoformat() if r.last_attempt_at else None,
+            }
+            for r in rows
+        ],
+    }
 
 
 # ---------- Debug: ver schema de una DB Notion ----------

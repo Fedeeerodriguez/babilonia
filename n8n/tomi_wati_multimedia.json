@@ -1,0 +1,215 @@
+{
+  "_comment": "WATI multimedia → texto. Equivalente al Switch de texto/audio/imagen pero adaptado a WATI. Enrutar por tipo de mensaje; audio se transcribe (Whisper), imagen se describe (GPT-4o-mini), y todo se normaliza a un único campo `message`. Pegar después del nodo que mapea el payload de WATI (en tu flujo: 'Edit Fields').",
+  "_requisitos": [
+    "1. En tu nodo 'Edit Fields' (el que mapea body.* del webhook WATI) AGREGÁ dos campos string:",
+    "      media_link  =  {{ $json.body.data }}        (ruta/nombre del archivo que manda WATI)",
+    "      media_mime  =  {{ $json.body.type }}        (opcional, para debug)",
+    "   Sin 'media_link' los nodos de descarga no saben qué bajar.",
+    "2. Los 2 nodos 'Descargar...' ya usan variables de entorno. Configurá en n8n:",
+    "      WATI_SERVER = https://live-mt-server.wati.io/<TENANT_ID>   (sin barra final)",
+    "      WATI_TOKEN  = <tu token de WATI>",
+    "   Tienen timeout de 20s y 3 reintentos automáticos.",
+    "3. Verificá que las credenciales OpenAI ('SONNER - OpenAi account' o la del proyecto) estén seleccionadas en Transcribir/Analyze.",
+    "4. Conectá la salida de tu Switch/mapper a 'Switch Tipo (WATI)', y la salida de 'Normalizar mensaje' a lo que siga (agente / logger)."
+  ],
+  "nodes": [
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 },
+                "conditions": [
+                  { "id": "w-cond-text", "leftValue": "={{ $json.tipo_de_mensaje }}", "rightValue": "text", "operator": { "type": "string", "operation": "equals" } }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Texto"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 },
+                "conditions": [
+                  { "id": "w-cond-audio", "leftValue": "={{ $json.tipo_de_mensaje }}", "rightValue": "audio", "operator": { "type": "string", "operation": "equals" } }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Audio"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 },
+                "conditions": [
+                  { "id": "w-cond-image", "leftValue": "={{ $json.tipo_de_mensaje }}", "rightValue": "image", "operator": { "type": "string", "operation": "equals" } }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Imagen"
+            }
+          ]
+        },
+        "options": { "fallbackOutput": "extra", "renameFallbackOutput": "Otro" }
+      },
+      "id": "wati-switch-001",
+      "name": "Switch Tipo (WATI)",
+      "type": "n8n-nodes-base.switch",
+      "position": [200, 400],
+      "typeVersion": 3.2,
+      "notes": "Enruta por tipo_de_mensaje (= body.type de WATI). WATI usa: text | image | audio | video | document."
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "wt-text", "name": "text", "value": "={{ $('Edit Fields').item.json.mensaje }}", "type": "string" }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [440, 280],
+      "id": "wati-obtener-texto",
+      "name": "Obtener Texto (WATI)"
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.WATI_SERVER }}/api/v1/getMedia?fileName={{ $('Edit Fields').item.json.media_link }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.WATI_TOKEN }}" }
+          ]
+        },
+        "options": { "timeout": 20000, "response": { "response": { "responseFormat": "file" } } }
+      },
+      "id": "wati-descargar-audio",
+      "name": "Descargar Audio (WATI)",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [440, 460],
+      "typeVersion": 4.2,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "notes": "Usa $env.WATI_SERVER (ej. https://live-mt-server.wati.io/<TENANT_ID>) y $env.WATI_TOKEN. Timeout 20s + 3 reintentos."
+    },
+    {
+      "parameters": { "resource": "audio", "operation": "transcribe", "options": {} },
+      "id": "wati-transcribir-audio",
+      "name": "Transcribir Audio (WATI)",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "position": [660, 460],
+      "typeVersion": 1.5,
+      "credentials": { "openAiApi": { "id": "TpgS7MbojkKQfXYq", "name": "SONNER - OpenAi account" } }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "wa-audio-wrap", "name": "content", "type": "string", "value": "=<audio>\n  {{ $json.text }}\n</audio>" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "wati-obtener-mensaje-audio",
+      "name": "Obtener Mensaje Audio (WATI)",
+      "type": "n8n-nodes-base.set",
+      "position": [880, 460],
+      "typeVersion": 3.4
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.WATI_SERVER }}/api/v1/getMedia?fileName={{ $('Edit Fields').item.json.media_link }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.WATI_TOKEN }}" }
+          ]
+        },
+        "options": { "timeout": 20000, "response": { "response": { "responseFormat": "file" } } }
+      },
+      "id": "wati-descargar-imagen",
+      "name": "Descargar Imagen (WATI)",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [440, 640],
+      "typeVersion": 4.2,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "notes": "Usa $env.WATI_SERVER (ej. https://live-mt-server.wati.io/<TENANT_ID>) y $env.WATI_TOKEN. Timeout 20s + 3 reintentos."
+    },
+    {
+      "parameters": {
+        "resource": "image",
+        "operation": "analyze",
+        "modelId": { "__rl": true, "value": "gpt-4o-mini", "mode": "list", "cachedResultName": "GPT-4O-MINI" },
+        "text": "Describe la imagen en detalle. Si contiene texto, transcribilo. Si es relevante para un seguro o trámite (póliza, DNI, comprobante de pago, formulario, captura de chat), describí qué es y extraé los datos clave.",
+        "inputType": "base64",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [660, 640],
+      "id": "wati-analyze-imagen",
+      "name": "Analyze Imagen (WATI)",
+      "credentials": { "openAiApi": { "id": "TpgS7MbojkKQfXYq", "name": "SONNER - OpenAi account" } }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "wa-img-wrap", "name": "content", "value": "=<image>\n {{ $json.content }}\n</image>", "type": "string" }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [880, 640],
+      "id": "wati-imagen-a-texto",
+      "name": "Imagen a Texto (WATI)"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [440, 820],
+      "id": "wati-otro-ignorar",
+      "name": "Otro tipo (ignorar)"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nconst message = item.Content || item.content || item.text || item.message || \"\";\nif (!message) {\n  // No tiramos error (cortaría el flujo); avisamos con un placeholder para que\n  // el agente pueda responder algo y queda registrado en los logs.\n  console.warn('Normalizar mensaje: no se encontro contenido', JSON.stringify(item).slice(0, 300));\n  return [{ json: { message: '[mensaje no reconocido]', _empty: true } }];\n}\nreturn [{ json: { message } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 400],
+      "id": "wati-normalizar",
+      "name": "Normalizar mensaje"
+    }
+  ],
+  "connections": {
+    "Switch Tipo (WATI)": {
+      "main": [
+        [ { "node": "Obtener Texto (WATI)", "type": "main", "index": 0 } ],
+        [ { "node": "Descargar Audio (WATI)", "type": "main", "index": 0 } ],
+        [ { "node": "Descargar Imagen (WATI)", "type": "main", "index": 0 } ],
+        [ { "node": "Otro tipo (ignorar)", "type": "main", "index": 0 } ]
+      ]
+    },
+    "Obtener Texto (WATI)": { "main": [ [ { "node": "Normalizar mensaje", "type": "main", "index": 0 } ] ] },
+    "Descargar Audio (WATI)": { "main": [ [ { "node": "Transcribir Audio (WATI)", "type": "main", "index": 0 } ] ] },
+    "Transcribir Audio (WATI)": { "main": [ [ { "node": "Obtener Mensaje Audio (WATI)", "type": "main", "index": 0 } ] ] },
+    "Obtener Mensaje Audio (WATI)": { "main": [ [ { "node": "Normalizar mensaje", "type": "main", "index": 0 } ] ] },
+    "Descargar Imagen (WATI)": { "main": [ [ { "node": "Analyze Imagen (WATI)", "type": "main", "index": 0 } ] ] },
+    "Analyze Imagen (WATI)": { "main": [ [ { "node": "Imagen a Texto (WATI)", "type": "main", "index": 0 } ] ] },
+    "Imagen a Texto (WATI)": { "main": [ [ { "node": "Normalizar mensaje", "type": "main", "index": 0 } ] ] },
+    "Normalizar mensaje": { "main": [ [] ] }
+  },
+  "pinData": {},
+  "meta": { "templateCredsSetupCompleted": true }
+}

@@ -25,7 +25,13 @@ CHAT_MODEL = os.getenv("OPENAI_CHAT_MODEL", "gpt-4.1-mini")
 
 SYSTEM = """Sos Tomi-asistente, el agente interno de la plataforma Babilonia para el equipo de asesores Allianz.
 Hablás en español rioplatense, sos breve y directo. Tenés acceso a tools para consultar métricas, conversaciones
-y la base de conocimiento. Cuando el usuario pida cargar información a la base, usá upload_knowledge."""
+y la base de conocimiento. Cuando el usuario pida cargar información a la base, usá upload_knowledge.
+
+REGLA DE HONESTIDAD (importante): NUNCA inventes datos. Si una tool no devuelve resultados,
+falla, o devuelve un campo "error", decílo claramente ("no encontré datos de X" / "no pude
+consultar ahora, probá de nuevo") en vez de adivinar. Si la consulta está fuera de lo que tus
+tools pueden responder, decí que no tenés esa información y sugerí escalarlo a un humano.
+Mejor un "no sé" honesto que una respuesta inventada."""
 
 TOOLS = [
     {"type": "function", "function": {
@@ -87,7 +93,10 @@ def chat(
 ):
     if not os.getenv("OPENAI_API_KEY"):
         raise HTTPException(500, "OPENAI_API_KEY no configurada")
-    client = OpenAI()
+    client = OpenAI(
+        timeout=float(os.getenv("OPENAI_TIMEOUT", "30")),
+        max_retries=int(os.getenv("OPENAI_MAX_RETRIES", "2")),
+    )
     messages = [{"role": "system", "content": SYSTEM}, *payload.history,
                 {"role": "user", "content": payload.message}]
 

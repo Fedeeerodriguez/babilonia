@@ -106,7 +106,11 @@ def _openai_client() -> OpenAI:
     key = os.getenv("OPENAI_API_KEY")
     if not key:
         raise RuntimeError("OPENAI_API_KEY no configurada")
-    return OpenAI(api_key=key)
+    return OpenAI(
+        api_key=key,
+        timeout=float(os.getenv("OPENAI_TIMEOUT", "30")),
+        max_retries=int(os.getenv("OPENAI_MAX_RETRIES", "2")),
+    )
 
 
 def _embed(query: str) -> List[float]:

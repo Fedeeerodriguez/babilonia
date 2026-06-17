@@ -72,3 +72,42 @@ create table if not exists public.tomi_locks (
   wa_id       text primary key,
   acquired_at timestamptz not null default now()
 );
+
+-- ─── sandbox_feedback: loop de mejora (interacciones de Tomi + correcciones de admins)
+-- También la crea SQLAlchemy (create_all); este DDL es para referencia / Supabase limpio.
+create table if not exists public.sandbox_feedback (
+  id                   bigserial primary key,
+  pregunta             text not null,
+  respuesta_tomi       text,
+  respuesta_corregida  text,
+  rating               text,                      -- good | mejorable | bad | null
+  status               text default 'pending',    -- pending | reviewed | promoted
+  canal                text,                       -- sandbox | whatsapp | mail | discord
+  source               text,                       -- plu3 | patrimonial | educacion | plu | plu4
+  publico              text,                       -- cliente | asesor | prospecto | estudiante | otro
+  tags                 jsonb,
+  user_email           text,
+  reviewed_by          text,
+  promoted_doc_source  text,
+  created_at           timestamptz not null default now(),
+  reviewed_at          timestamptz
+);
+create index if not exists idx_sandboxfb_status on public.sandbox_feedback (status, created_at desc);
+create index if not exists idx_sandboxfb_rating on public.sandbox_feedback (rating);
+create index if not exists idx_sandboxfb_publico on public.sandbox_feedback (publico);
+
+-- ─── tomi_failed_dispatches: dead-letter de disparos del trigger 23h que fallaron
+-- También la crea SQLAlchemy (create_all); DDL para referencia / Supabase limpio.
+create table if not exists public.tomi_failed_dispatches (
+  id                bigserial primary key,
+  wa_id             text not null,
+  sender_name       text,
+  last_user_message text,
+  reason            text,
+  attempts          integer default 1,
+  resolved          boolean default false,
+  created_at        timestamptz not null default now(),
+  last_attempt_at   timestamptz default now()
+);
+create index if not exists idx_faileddisp_pending on public.tomi_failed_dispatches (resolved, last_attempt_at desc);
+create index if not exists idx_faileddisp_waid on public.tomi_failed_dispatches (wa_id);

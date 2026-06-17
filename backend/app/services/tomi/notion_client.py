@@ -23,6 +23,7 @@ from notion_client import Client
 from notion_client.errors import APIResponseError
 
 from app.services.tomi.cache import notion_cache, hash_key
+from app.services.tomi.circuit import CircuitBreaker, CircuitOpenError
 
 log = logging.getLogger("tomi.notion")
 
@@ -81,30 +82,60 @@ SUB_DBS_CLIENTES: Dict[str, str] = {
 def _client() -> Client:
     if not NOTION_TOKEN:
         raise RuntimeError("NOTION_TOKEN no configurado")
-    return Client(auth=NOTION_TOKEN, log_level=logging.WARNING)
+    # timeout_ms: fallar rápido si Notion no responde, en vez de colgar el worker.
+    return Client(
+        auth=NOTION_TOKEN,
+        log_level=logging.WARNING,
+        timeout_ms=int(os.getenv("NOTION_TIMEOUT_MS", "20000")),
+    )
+
+
+notion_breaker = CircuitBreaker(
+    "notion",
+    fail_threshold=int(os.getenv("NOTION_CB_THRESHOLD", "6")),
+    cooldown=float(os.getenv("NOTION_CB_COOLDOWN", "30")),
+)
 
 
 def _retry_429(fn, *args, max_attempts: int = 4, **kwargs):
-    """Wrapper con backoff exponencial ante rate-limit de Notion (429)."""
+    """Wrapper con backoff exponencial ante rate-limit de Notion (429) + circuit
+    breaker: si Notion está caído, corta rápido en vez de seguir golpeando."""
     import time as _t
+
+    if not notion_breaker.allow():
+        raise CircuitOpenError("Notion no disponible (circuit abierto)")
+
     delay = 1.0
     for attempt in range(max_attempts):
         try:
-            return fn(*args, **kwargs)
+            result = fn(*args, **kwargs)
+            notion_breaker.record_success()
+            return result
         except APIResponseError as e:
             if getattr(e, "status", None) == 429 or "rate" in str(e).lower():
                 log.warning("Notion 429 — retry %d/%d en %.1fs", attempt + 1, max_attempts, delay)
                 _t.sleep(delay)
                 delay *= 2
                 continue
+            notion_breaker.record_failure()
             raise
         except Exception as e:
             if "rate" in str(e).lower() or "429" in str(e):
                 _t.sleep(delay)
                 delay *= 2
                 continue
+            notion_breaker.record_failure()
             raise
-    return fn(*args, **kwargs)  # último intento sin catch
+    # Último intento: si vuelve a fallar por rate-limit, propagamos un error claro
+    # en vez de dejar escapar la excepción cruda del SDK.
+    try:
+        result = fn(*args, **kwargs)
+        notion_breaker.record_success()
+        return result
+    except Exception as e:
+        notion_breaker.record_failure()
+        log.error("Notion sigue fallando tras %d reintentos: %s", max_attempts, e)
+        raise
 
 
 def _flatten_props(page: Dict[str, Any]) -> Dict[str, Any]:
@@ -862,6 +893,71 @@ def buscar_cobranzas_por_poliza(poliza: str) -> List[Dict[str, Any]]:
         DB_COBRANZAS,
         {"property": "Póliza", "title": {"contains": poliza}},
     )
+
+
+def _to_int(v: Any) -> int:
+    try:
+        return int(float(v))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _cobranza_resumen(c: Dict[str, Any]) -> Dict[str, Any]:
+    """Extrae los campos relevantes de atraso de una cobranza flattened."""
+    dias = _to_int(c.get("Días de atraso") or c.get("Días de Atraso Actuales") or 0)
+    return {
+        "poliza": c.get("Póliza") or c.get("_title") or "(sin póliza)",
+        "dias_de_atraso": dias,
+        "monto_faltante": c.get("Monto Faltante") or 0,
+        "estado": c.get("Estado de Cobranza") or c.get("Estado"),
+        "en_atraso": dias > 0,
+    }
+
+
+def dias_de_atraso(
+    *,
+    poliza: Optional[str] = None,
+    email_cliente: Optional[str] = None,
+    cliente: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Calcula el atraso de cobranzas de un cliente o póliza.
+
+    Acepta una póliza directa, o un email/nombre de cliente (en cuyo caso
+    resuelve sus pólizas vía emisiones y luego las cobranzas de cada una).
+
+    Devuelve un agregado claro para que Tomi responda
+    «cuántos días de atraso tiene este cliente» sin ambigüedad.
+    """
+    cobranzas: List[Dict[str, Any]] = []
+    if poliza:
+        cobranzas = buscar_cobranzas_por_poliza(poliza)
+    elif email_cliente or cliente:
+        emisiones = buscar_emisiones_batch(
+            clientes=[cliente] if cliente else None,
+            emails=[email_cliente] if email_cliente else None,
+        )
+        polizas = sorted({
+            e.get("Número de Póliza") or e.get("_title")
+            for e in emisiones
+            if (e.get("Número de Póliza") or e.get("_title"))
+        })
+        if polizas:
+            cobranzas = buscar_cobranzas_batch(polizas)
+
+    detalle = [_cobranza_resumen(c) for c in cobranzas]
+    en_atraso = [d for d in detalle if d["en_atraso"]]
+    max_dias = max((d["dias_de_atraso"] for d in detalle), default=0)
+    total_faltante = sum(_to_int(d["monto_faltante"]) for d in detalle)
+
+    return {
+        "consulta": {"poliza": poliza, "email_cliente": email_cliente, "cliente": cliente},
+        "tiene_atraso": bool(en_atraso),
+        "max_dias_de_atraso": max_dias,
+        "polizas_en_atraso": len(en_atraso),
+        "polizas_revisadas": len(detalle),
+        "total_monto_faltante": total_faltante,
+        "detalle": detalle,
+    }
 
 
 def buscar_tickets_allianz(tramite: Optional[str] = None) -> List[Dict[str, Any]]:

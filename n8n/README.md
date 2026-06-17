@@ -9,6 +9,27 @@ Tres workflows componen el sistema completo de mensajería + handoff de 23h:
 | 3 | **tomi-trigger-23h** | [`tomi_trigger_23h.json`](tomi_trigger_23h.json) | Schedule cada 5 min | Detecta conversaciones donde el último mensaje del cliente tiene ≥23h sin respuesta y dispara a Tomi vía HTTP. |
 | 3b | **bridge para tomi unificado** | [`tomi_webhook_entry.json`](tomi_webhook_entry.json) | (snippet, no es un workflow completo) | Snippet con un Webhook trigger + Set + Respond para pegar AL INICIO del workflow `tomi unificado`. Es la puerta de entrada por la que el #3 dispara. |
 
+## Loop de feedback del sandbox
+
+| Workflow | Archivo | Trigger | Para qué sirve |
+|---|---|---|---|
+| **Log feedback sandbox** | [`feedback_log_sandbox.json`](feedback_log_sandbox.json) | Manual (snippet) | Registra cada interacción de Tomi en `/api/feedback/log` para que los admins la revisen/corrijan desde la página **Sandbox** de la plataforma. |
+
+**Cómo integrarlo en el flujo del sandbox:**
+
+1. Importá `feedback_log_sandbox.json` (sirve para probar el endpoint con el botón "Execute workflow").
+2. Asegurate de tener las env vars en n8n: `TOMI_API_URL` (ej. `https://api.babilonia.ai`) y `TOMI_INTERNAL_KEY` (igual a la del backend).
+3. Copiá el nodo **`Registrar feedback (Tomi)`** (HTTP Request) y pegalo en tu workflow `tomi unificado`, **después** del nodo que produce la respuesta final de Tomi.
+4. Conectá la salida del agente a ese nodo y ajustá el `jsonBody` para que tome los campos reales:
+   - `pregunta` → el texto del usuario (ej. `{{ $('Mapear payload').item.json.last_user_message }}`)
+   - `respuesta_tomi` → la respuesta generada (ej. `{{ $json.output }}`)
+   - `canal` → `"sandbox"` mientras entrenan; `"whatsapp"` en producción
+   - `source` → opcional, el área (`plu3`, `patrimonial`, etc.)
+   - `user_email` → opcional, el email del que escribió
+5. El nodo es **fire-and-forget**: ponelo en una rama paralela para no demorar la respuesta a WATI.
+
+Una vez registradas, las interacciones aparecen en **Sandbox** (sidebar de la plataforma). Ahí el admin las califica 👍/👎, escribe la respuesta corregida y, al aprobarlas, las **promueve** al vector store (`documents`) con el mismo `source` que consume Tomi → aprende al instante.
+
 ## Orden de instalación
 
 ### 0. Crear tablas en Supabase
@@ -56,9 +77,16 @@ Si tu Tomi tiene otro trigger (por ejemplo el webhook directo de WATI), podés d
 ### 4. Importar `tomi_trigger_23h.json`
 
 Antes de activarlo:
-1. En los 2 nodos Postgres (`Limpiar locks viejos` y `Buscar y bloquear conversaciones`), reemplazá la credencial por **Supabase Postgres** (paso 1). En el JSON quedó como placeholder `REEMPLAZAR_POR_CREDENCIAL_SUPABASE`.
+1. En los **3 nodos Postgres** (`Limpiar locks viejos`, `Buscar candidatos`, `Liberar lock (fallo disparo)`), reemplazá la credencial por **Supabase Postgres** (paso 1). En el JSON quedó como placeholder `REEMPLAZAR_POR_CREDENCIAL_SUPABASE`.
 2. En el nodo `Disparar Tomi`, ajustá la URL si tu n8n no es `n8n.babilonia.ai`. La URL correcta la ves en el workflow `tomi unificado` → click en el nodo `Webhook Tomi (trigger 23h)` → "Test URL" / "Production URL".
 3. Activá el workflow.
+
+> **Anti-doble-disparo (P1):** el nodo `Buscar candidatos` ahora hace un *claim atómico* en
+> `tomi_locks` (`INSERT ... ON CONFLICT DO NOTHING RETURNING`), así dos ejecuciones simultáneas
+> no pueden disparar la misma conversación dos veces. `Limpiar locks viejos` borra locks de más
+> de 2h (por si un disparo quedó colgado), y si `Disparar Tomi` falla tras 3 reintentos, la rama
+> de error libera el lock para reintentar en el próximo tick. Requiere la tabla `tomi_locks`
+> (ya está en `db/schema.sql`).
 
 ## Cómo verificar que funciona
 

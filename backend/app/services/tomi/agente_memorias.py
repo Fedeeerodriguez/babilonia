@@ -131,7 +131,11 @@ def responder(
     if not api_key:
         return {"error": "OPENAI_API_KEY no configurada"}
 
-    client = OpenAI(api_key=api_key)
+    client = OpenAI(
+        api_key=api_key,
+        timeout=float(os.getenv("OPENAI_TIMEOUT", "30")),
+        max_retries=int(os.getenv("OPENAI_MAX_RETRIES", "2")),
+    )
     tools = _tools_schema()
 
     messages: List[Dict[str, Any]] = [{"role": "system", "content": SYSTEM_PROMPT}]
