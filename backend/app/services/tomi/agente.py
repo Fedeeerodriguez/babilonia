@@ -95,7 +95,16 @@ Elegí el más acotado posible — traer todo (modo="completo") es caro y ruidos
    REQUIERE: `email_asesor`. Sin email, no funciona — el modo necesita un correo concreto.
 
 - `cobranzas` → Solo cobranzas filtradas por póliza.
-   USAR para: "cuándo paga X", "saldo de PLU3-XXX", "próximo cobro".
+   USAR para: "cuándo paga X", "saldo de PLU3-XXX", "próximo cobro",
+   y también para el "número de cliente" (ver MAPEO DE TÉRMINOS abajo).
+
+MAPEO DE TÉRMINOS — "número de cliente":
+Cuando el usuario pida el "número de cliente", "número de socio", "código de cliente"
+o "el número" de un cliente/póliza, se refiere SIEMPRE al campo "Número de Referencia"
+de la base de Cobranza. Ese dato vive en `cobranzas`, así que para responderlo usá el
+modo `cobranzas` (o `completo` si ya estás trayendo todo). El "Número de Referencia"
+NO es la póliza ni la solicitud: es un identificador propio del cliente en Cobranza.
+Si el cliente no tiene "Número de Referencia" cargado, decilo — no devuelvas otro número.
 
 - `eventos` → Datos básicos + eventos Calendly.
    USAR para: "agenda de X", "próxima cita", "eventos del asesor Z".

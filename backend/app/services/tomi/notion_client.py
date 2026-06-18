@@ -907,6 +907,13 @@ def _cobranza_resumen(c: Dict[str, Any]) -> Dict[str, Any]:
     dias = _to_int(c.get("Días de atraso") or c.get("Días de Atraso Actuales") or 0)
     return {
         "poliza": c.get("Póliza") or c.get("_title") or "(sin póliza)",
+        # "Número de Referencia" es lo que el usuario llama "número de cliente".
+        "numero_referencia": (
+            c.get("Número de Referencia")
+            or c.get("Numero de Referencia")
+            or c.get("N° de Referencia")
+            or c.get("Nº de Referencia")
+        ),
         "dias_de_atraso": dias,
         "monto_faltante": c.get("Monto Faltante") or 0,
         "estado": c.get("Estado de Cobranza") or c.get("Estado"),

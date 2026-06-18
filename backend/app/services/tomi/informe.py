@@ -335,8 +335,17 @@ def renderizar(resultado: Dict[str, Any]) -> str:
         lines.append(f"## Cobranzas ({len(cobr)})")
         for i, c in enumerate(cobr, 1):
             pol = _md_link(_safe(c.get("Póliza")), c.get("_url"))
+            # "Número de Referencia" = lo que el usuario llama "número de cliente".
+            ref = (
+                c.get("Número de Referencia")
+                or c.get("Numero de Referencia")
+                or c.get("N° de Referencia")
+                or c.get("Nº de Referencia")
+            )
+            ref_str = f"N° de cliente: `{_safe(ref)}` | " if ref else ""
             lines.append(
                 f"{i}. {pol} — "
+                f"{ref_str}"
                 f"Estado: `{_safe(c.get('Estado de Cobranza'))}` | "
                 f"Días atraso: `{_safe(c.get('Días de atraso'))}` | "
                 f"Próximo cobro: `{_safe((c.get('Próximo intento de cobro') or {}).get('start'))}`"
