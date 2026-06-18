@@ -138,6 +138,48 @@ def _retry_429(fn, *args, max_attempts: int = 4, **kwargs):
         raise
 
 
+def _flatten_rollup_array(items: List[Dict[str, Any]]) -> Any:
+    """Aplana un rollup tipo 'array' (show_original) a un valor limpio.
+
+    Cada item trae su propio `type` (number, rich_text, title, select, date…).
+    Devuelve un escalar si hay un solo valor, una lista si hay varios, o None
+    si está vacío. Así un rollup como "Número de Referencia" sale como 24860025
+    en vez de una lista de dicts crudos de Notion.
+    """
+    out: List[Any] = []
+    for item in items:
+        if not isinstance(item, dict):
+            out.append(item)
+            continue
+        it = item.get("type")
+        if it == "number":
+            out.append(item.get("number"))
+        elif it == "rich_text":
+            out.append("".join(x.get("plain_text", "") for x in item.get("rich_text", [])))
+        elif it == "title":
+            out.append("".join(x.get("plain_text", "") for x in item.get("title", [])))
+        elif it == "select":
+            out.append((item.get("select") or {}).get("name"))
+        elif it == "status":
+            out.append((item.get("status") or {}).get("name"))
+        elif it == "date":
+            d = item.get("date") or {}
+            out.append(d.get("start"))
+        elif it == "people":
+            out.extend(p.get("name") for p in (item.get("people") or []))
+        elif it == "email":
+            out.append(item.get("email"))
+        elif it == "phone_number":
+            out.append(item.get("phone_number"))
+        else:
+            out.append(item.get(it))
+    # Limpia vacíos/None
+    out = [x for x in out if x not in (None, "")]
+    if not out:
+        return None
+    return out[0] if len(out) == 1 else out
+
+
 def _flatten_props(page: Dict[str, Any]) -> Dict[str, Any]:
     """Aplana las propiedades de una page de Notion a un dict simple."""
     out: Dict[str, Any] = {"_id": page.get("id"), "_url": page.get("url"), "_title": None}
@@ -182,7 +224,15 @@ def _flatten_props(page: Dict[str, Any]) -> Dict[str, Any]:
                 v = f.get(f.get("type"))
             elif t == "rollup":
                 r = val.get("rollup") or {}
-                v = r.get(r.get("type"))
+                rt = r.get("type")
+                if rt == "array":
+                    # Rollup "show_original": Notion devuelve una lista de items crudos
+                    # (cada uno con su propio type). Los aplanamos a valores limpios y,
+                    # si queda uno solo, lo devolvemos como escalar (ej. "Número de
+                    # Referencia", "Nombre del Cliente", "Teléfono Cliente" son rollups).
+                    v = _flatten_rollup_array(r.get("array") or [])
+                else:
+                    v = r.get(rt)
             elif t == "files":
                 v = [
                     (f.get("file") or f.get("external") or {}).get("url")
