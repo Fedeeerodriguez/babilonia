@@ -352,6 +352,22 @@ def renderizar(resultado: Dict[str, Any]) -> str:
             )
         lines.append("")
 
+    # DAF (cuenta de agente Allianz)
+    daf = resultado.get("daf") or []
+    if daf:
+        lines.append(f"## DAF — Cuentas de agente ({len(daf)})")
+        for i, d in enumerate(daf, 1):
+            nombre = _md_link(_safe(d.get("daf")), d.get("url"))
+            lines.append(
+                f"{i}. {nombre} — "
+                f"N° de agente: `{_safe(d.get('numero_agente'))}` | "
+                f"Cédula: `{_safe(d.get('cedula'))}` | "
+                f"Estado: `{_safe(d.get('estado'))}` | "
+                f"Correo: `{_safe(d.get('correo_daf'))}` | "
+                f"Meses con DAF: `{_safe(d.get('meses_con_daf'))}`"
+            )
+        lines.append("")
+
     # Tickets Allianz
     tk = resultado.get("tickets_allianz") or []
     if tk:

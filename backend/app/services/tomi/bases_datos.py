@@ -42,6 +42,8 @@ KEYWORDS_TICKETS = (
 )
 KEYWORDS_CALENDLY = ("turno", "agenda", "agendar", "reunión", "reunion", "cita", "calendly")
 KEYWORDS_COBRANZA = ("cobranza", "pago", "saldo", "cuota", "vencimiento", "pagar", "debo")
+KEYWORDS_DAF = ("daf", "número de agente", "numero de agente", "clave de agente",
+                "cédula", "cedula", "cuenta de agente", "credencial", "estado del daf")
 
 
 def _extraer(mensaje: str) -> Tuple[List[str], List[str], List[str], List[str]]:
@@ -59,12 +61,13 @@ def _extraer(mensaje: str) -> Tuple[List[str], List[str], List[str], List[str]]:
 
 def _detectar_intents(mensaje: str) -> Dict[str, bool]:
     if not mensaje:
-        return {"tickets": False, "calendly": False, "cobranza": False}
+        return {"tickets": False, "calendly": False, "cobranza": False, "daf": False}
     m = mensaje.lower()
     return {
         "tickets": any(k in m for k in KEYWORDS_TICKETS),
         "calendly": any(k in m for k in KEYWORDS_CALENDLY),
         "cobranza": any(k in m for k in KEYWORDS_COBRANZA),
+        "daf": any(k in m for k in KEYWORDS_DAF),
     }
 
 
@@ -367,6 +370,10 @@ def consultar(
             if intents["calendly"]:
                 incluir_set.add("calendly")
 
+    # El DAF (cuenta de agente) se incluye en cualquier modo si lo piden y hay asesor/email.
+    if intents["daf"] and (asesores_uniq or emails_uniq):
+        incluir_set.add("daf")
+
     # 2. Primera ola de queries (sin dependencias)
     tasks: Dict[str, Any] = {}
     queries_count = 0
@@ -636,11 +643,30 @@ def consultar(
     except Exception as e:
         log.error("validaciones falló: %s", e)
 
+    # DAF (cuenta de agente): se busca por nombre de asesor y/o email.
+    daf: List[Dict[str, Any]] = []
+    if "daf" in incluir_set and (asesores_uniq or emails_uniq):
+        vistos: set = set()
+        try:
+            for a in asesores_uniq:
+                for d in nc.buscar_daf(asesor=a, limit=5):
+                    queries_count += 1
+                    if d.get("_id") not in vistos:
+                        vistos.add(d.get("_id")); daf.append(nc._daf_resumen(d))
+            for em in emails_uniq:
+                for d in nc.buscar_daf(email=em, limit=5):
+                    queries_count += 1
+                    if d.get("_id") not in vistos:
+                        vistos.add(d.get("_id")); daf.append(nc._daf_resumen(d))
+        except Exception as e:
+            log.error("buscar_daf falló: %s", e)
+
     elapsed = int((time.time() - t0) * 1000)
     return {
         "usuarios": usuarios,
         "emisiones": emisiones,
         "cobranzas": cobranzas,
+        "daf": daf,
         "tickets_allianz": results.get("tickets_allianz", []) or [],
         "calendly": results.get("calendly", []) or [],
         "clientes_por_nombre": results.get("clientes_por_nombre", []) or [],
