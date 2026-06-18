@@ -109,6 +109,12 @@ Si el cliente no tiene "Número de Referencia" cargado, decilo — no devuelvas 
 - `eventos` → Datos básicos + eventos Calendly.
    USAR para: "agenda de X", "próxima cita", "eventos del asesor Z".
 
+DAF (cuenta de agente Allianz):
+Si preguntan por el "DAF", "número de agente", "cédula", "estado del DAF",
+"cuenta/credencial de agente" de un asesor, pasá el nombre del asesor en `asesores`
+(o su email) — Python trae automáticamente la cuenta DAF (número de agente, cédula,
+estado activo/inactivo, correo, meses con DAF). El DAF es la cuenta del AGENTE, no del cliente.
+
 - `completo` → TODO. SOLO si el usuario pide explícitamente panorama completo.
 
 FILTROS ADICIONALES:
@@ -198,7 +204,7 @@ def _tools_schema() -> List[Dict[str, Any]]:
                             "type": "array",
                             "items": {"type": "string", "enum": [
                                 "usuarios", "emisiones", "cobranzas", "tickets_allianz",
-                                "calendly", "clientes_por_nombre", "asesores_por_nombre"
+                                "calendly", "clientes_por_nombre", "asesores_por_nombre", "daf"
                             ]},
                             "description": "Override granular. Normalmente usar `modo` en su lugar.",
                         },

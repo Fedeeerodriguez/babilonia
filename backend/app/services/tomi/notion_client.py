@@ -34,6 +34,7 @@ DB_ESTUDIANTES = os.getenv("NOTION_DB_ESTUDIANTES", "")
 DB_CLIENTES = os.getenv("NOTION_DB_CLIENTES", "")
 DB_EMISIONES = os.getenv("NOTION_DB_EMISIONES", "")
 DB_COBRANZAS = os.getenv("NOTION_DB_COBRANZAS", "")
+DB_DAF = os.getenv("NOTION_DB_DAF", "")
 DB_TICKETS_ALLIANZ = os.getenv("NOTION_DB_TICKETS_ALLIANZ", "")
 DB_TICKETS_BABILONIA = os.getenv("NOTION_DB_TICKETS_BABILONIA", "")
 DB_EVENTOS_CALENDLY = os.getenv("NOTION_DB_EVENTOS_CALENDLY", "")
@@ -1197,3 +1198,40 @@ def buscar_migracion_cartera(*, emision: Optional[str] = None, migrado: Optional
     if migrado is not None:
         conds.append({"property": "Migrado", "checkbox": {"equals": bool(migrado)}})
     return _query_simple(DB_MIGRACION_CARTERA, conds, limit)
+
+
+def buscar_daf(*, asesor: Optional[str] = None, email: Optional[str] = None,
+               numero_agente: Optional[int] = None, estado: Optional[str] = None,
+               limit: int = 20) -> List[Dict[str, Any]]:
+    """DAFs: cuenta de agente Allianz. title="DAF" (suele ser el nombre del agente).
+
+    Campos: Número de Agente, Cédula, Estado del DAF (✅ Activo / ❄️ Inactivo),
+    Correo DAF, Asesor Titular (relación), y bases agregadas de producción.
+    Filtrá por nombre de asesor (title), correo, o número de agente.
+    """
+    conds: List[Dict[str, Any]] = []
+    if asesor:
+        conds.append({"property": "DAF", "title": {"contains": asesor}})
+    if email:
+        conds.append({"property": "Correo DAF", "rich_text": {"contains": email.lower()}})
+    if numero_agente is not None:
+        conds.append({"property": "Número de Agente", "number": {"equals": int(numero_agente)}})
+    if estado:
+        conds.append({"property": "Estado del DAF", "select": {"equals": estado}})
+    return _query_simple(DB_DAF, conds, limit)
+
+
+def _daf_resumen(d: Dict[str, Any]) -> Dict[str, Any]:
+    """Extrae los campos útiles de una cuenta DAF (flattened)."""
+    return {
+        "daf": d.get("DAF") or d.get("_title"),
+        "numero_agente": d.get("Número de Agente"),
+        "cedula": d.get("Cédula"),
+        "estado": d.get("Estado del DAF"),
+        "correo_daf": d.get("Correo DAF"),
+        # Estos rollups ahora salen limpios gracias a _flatten_rollup_array
+        "asesor": d.get("Asesor") or d.get("Asesor "),
+        "correo_en_programa": d.get("Correo en Programa") or d.get("Correo en el Programa (Fórmula)"),
+        "meses_con_daf": d.get("Meses con DAF"),
+        "url": d.get("_url"),
+    }
