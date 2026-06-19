@@ -24,13 +24,22 @@ router = APIRouter(prefix="/api/agent", tags=["agent"])
 CHAT_MODEL = os.getenv("OPENAI_CHAT_MODEL", "gpt-4.1-mini")
 
 SYSTEM = """Sos Tomi-asistente, el agente interno de la plataforma Babilonia para el equipo de asesores Allianz.
-Hablás en español rioplatense, sos breve y directo. Tenés acceso a tools para consultar métricas, conversaciones
-y la base de conocimiento. Cuando el usuario pida cargar información a la base, usá upload_knowledge.
+Hablás en español rioplatense, sos breve y directo. Tenés acceso a tools para consultar métricas, conversaciones,
+la base de conocimiento y el SANDBOX de entrenamiento de Tomi. Cuando el usuario pida cargar información a la base, usá upload_knowledge.
 
-REGLA DE HONESTIDAD (importante): NUNCA inventes datos. Si una tool no devuelve resultados,
+SANDBOX / CALIDAD DE TOMI:
+Cuando el usuario pregunte por cuántos mensajes hubo, qué porcentaje se aprobó/rechazó, la tasa de
+aprobación, o qué se puede mejorar de las respuestas de Tomi, usá `feedback_stats` (te da totales,
+% aprobados = correctas, % rechazados = malas, mejorables, desglose por público y top de problemas).
+Para dar IDEAS DE MEJORA concretas, llamá además a `feedback_examples` con rating="bad" y/o "mejorable"
+para leer las preguntas, las respuestas que fallaron, las correcciones del admin y las etiquetas del
+problema; a partir de ESOS datos reales proponé mejoras accionables (no genéricas). Ej: "el 40% de los
+rechazos tienen tag 'dato_incorrecto' en consultas de cobranza → conviene reforzar X".
+
+REGLA DE HONESTIDAD (importante): NUNCA inventes datos ni porcentajes. Si una tool no devuelve resultados,
 falla, o devuelve un campo "error", decílo claramente ("no encontré datos de X" / "no pude
-consultar ahora, probá de nuevo") en vez de adivinar. Si la consulta está fuera de lo que tus
-tools pueden responder, decí que no tenés esa información y sugerí escalarlo a un humano.
+consultar ahora, probá de nuevo") en vez de adivinar. Citá los números EXACTOS que devuelven las tools.
+Si la consulta está fuera de lo que tus tools pueden responder, decí que no tenés esa información.
 Mejor un "no sé" honesto que una respuesta inventada."""
 
 TOOLS = [
@@ -64,6 +73,24 @@ TOOLS = [
             "title": {"type": "string"}, "source": {"type": "string"}, "text": {"type": "string"},
         }, "required": ["title", "source", "text"]},
     }},
+    {"type": "function", "function": {
+        "name": "feedback_stats",
+        "description": ("Estadísticas del sandbox de entrenamiento de Tomi: total de interacciones, "
+                        "cuántas aprobadas (correctas), mejorables y rechazadas (malas), tasa de aprobación, "
+                        "desglose por público y top de etiquetas de problemas. Usalo para 'cuántos mensajes "
+                        "hubo', '% aprobado/rechazado', 'cómo viene la calidad de Tomi'."),
+        "parameters": {"type": "object", "properties": {}},
+    }},
+    {"type": "function", "function": {
+        "name": "feedback_examples",
+        "description": ("Devuelve ejemplos reales del sandbox para analizar qué mejorar. Filtrá por rating "
+                        "('bad' = malas, 'mejorable', 'good'). Cada ejemplo trae la pregunta, la respuesta de "
+                        "Tomi, la corrección del admin y las etiquetas del problema. Usalo para proponer mejoras concretas."),
+        "parameters": {"type": "object", "properties": {
+            "rating": {"type": "string", "enum": ["good", "mejorable", "bad"]},
+            "limit": {"type": "integer", "default": 15},
+        }},
+    }},
 ]
 
 
@@ -82,6 +109,34 @@ def _run_tool(name: str, args: dict, db: Session, user: models.User):
     if name == "upload_knowledge":
         out = upload_text(payload=schemas.TextUploadIn(**args), db=db, user=user)
         return schemas.DocumentOut.model_validate(out).model_dump(mode="json")
+    if name == "feedback_stats":
+        from app.routers.feedback import feedback_stats as _fb_stats
+        s = _fb_stats(db=db, _=user)
+        data = s.model_dump() if hasattr(s, "model_dump") else dict(s)
+        # Porcentajes explícitos para que el agente no los calcule mal.
+        calificadas = data.get("good", 0) + data.get("mejorable", 0) + data.get("bad", 0)
+        data["calificadas"] = calificadas
+        data["pct_aprobadas"] = round(100 * data.get("good", 0) / calificadas, 1) if calificadas else 0.0
+        data["pct_mejorables"] = round(100 * data.get("mejorable", 0) / calificadas, 1) if calificadas else 0.0
+        data["pct_rechazadas"] = round(100 * data.get("bad", 0) / calificadas, 1) if calificadas else 0.0
+        return data
+    if name == "feedback_examples":
+        from app.routers.feedback import list_feedback as _fb_list
+        rows = _fb_list(
+            status=None, rating=args.get("rating"), canal=None, publico=None,
+            limit=int(args.get("limit", 15)), offset=0, db=db, _=user,
+        )
+        return [
+            {
+                "pregunta": r.pregunta,
+                "respuesta_tomi": r.respuesta_tomi,
+                "respuesta_corregida": r.respuesta_corregida,
+                "rating": r.rating,
+                "publico": r.publico,
+                "tags": r.tags,
+            }
+            for r in rows
+        ]
     raise ValueError(f"tool desconocido: {name}")
 
 
