@@ -136,6 +136,20 @@ def _render_usuario_cliente(u: Dict[str, Any]) -> List[str]:
             if e_.get("notas") and e_.get("notas") not in ("—", ""):
                 lines.append(f"   - **Notas:** `{e_.get('notas')}`")
         lines.append("")
+
+    tks = exp.get("tickets_allianz") or []
+    if tks:
+        lines.append(f"#### Trámites / Tickets Allianz del cliente ({len(tks)})")
+        for i, t in enumerate(tks, 1):
+            tit = _md_link(_safe(t.get("tramite")), t.get("url"))
+            lines.append(
+                f"{i}. {tit} — "
+                f"Tipo: `{_safe(t.get('tipo'))}` | "
+                f"Estado: `{_safe(t.get('estado'))}` | "
+                f"Estado Allianz: `{_safe(t.get('estado_allianz'))}` | "
+                f"Solicitud: `{_safe(t.get('fecha_solicitud'))}`"
+            )
+        lines.append("")
     return lines
 
 

@@ -556,6 +556,32 @@ def consultar(
                 except Exception as e:
                     log.error("emisiones_de_cliente falló: %s", e)
 
+                # Trámites/tickets Allianz del cliente (via su relación "Tickets Allianz").
+                # Antes Tomi no informaba trámites pendientes que SÍ existían porque
+                # buscar_tickets_batch traía TODOS sin filtrar por cliente.
+                try:
+                    ticket_ids = [v for v in (data.get("Tickets Allianz") or [])
+                                  if isinstance(v, str) and len(v) >= 32]
+                    if ticket_ids:
+                        tks = nc.expandir_ids_full(
+                            ticket_ids,
+                            extract_props=["_id", "_url", "Nombre del Trámite", "Tipo de Trámite",
+                                           "Estado", "Estado Interno de Allianz", "Fecha de Solicitud"],
+                            max_ids=20, max_workers=4,
+                        )
+                        queries_count += len(tks)
+                        exp["tickets_allianz"] = [{
+                            "tramite": t.get("Nombre del Trámite"),
+                            "tipo": t.get("Tipo de Trámite"),
+                            "estado": t.get("Estado"),
+                            "estado_allianz": t.get("Estado Interno de Allianz"),
+                            "fecha_solicitud": (t.get("Fecha de Solicitud") or {}).get("start"),
+                            "url": t.get("_url"),
+                        } for t in tks]
+                        exp["total_tickets"] = len(exp["tickets_allianz"])
+                except Exception as e:
+                    log.error("tickets_de_cliente falló: %s", e)
+
             if exp:
                 expansiones[email_k] = exp
 

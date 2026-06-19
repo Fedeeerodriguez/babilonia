@@ -1,0 +1,948 @@
+{
+  "name": "Tomi · Log feedback sandbox (FIXED)",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [-1328, 144],
+      "id": "f5ccb1dc-3e31-4ecc-90f9-bd76492cc53e",
+      "name": "No Operation, do nothing2"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=el user_id es: {{ $('Edit Fields1').item.json.message.chat.id }}\nel nombre del usuario es: {{ $('Edit Fields1').item.json.message.from.first_name }}\nmensaje_usuario: {{ $('Redis9').item.json.mensajes }}",
+        "hasOutputParser": true,
+        "needsFallback": true,
+        "options": {
+          "systemMessage": "ROL\n----------------------------------------------------\nSos el clasificador de Babilonia. Tu unico trabajo es identificar a que tipo de usuario corresponde un correo electronico, consultando 3 bases de Notion.\n\nNO conversas. NO escribis mensajes al usuario. NO inventas datos.\nDevolves SOLO un JSON con la clasificacion.\n\nCONTEXTO\n----------------------------------------------------\nTu memoria de conversacion se carga automaticamente al inicio de cada ejecucion. Si en esa memoria ya hay una clasificacion previa para este usuario, esa es la respuesta — no hace falta volver a consultar las bases.\n\nLOGICA DE DECISION\n----------------------------------------------------\nPASO A — Ya esta clasificado en memoria?\n   SI -> devolve esa misma clasificacion. FIN.\n   NO -> continua a PASO B.\n\nPASO B — El mensaje del usuario contiene un correo (xxx@yyy.zzz)?\n   NO -> devolve { \"comando_1\": \"no registrado\", \"comando_2\": \"prospecto\" }. FIN.\n   SI -> continua a PASO C.\n\nPASO C — Busca el correo en las 3 bases de Notion, en este orden estricto:\n   1. asesores\n      Encontrado -> { \"comando_1\": \"registrado\", \"comando_2\": \"asesor\" }. FIN.\n   2. estudiantes\n      Encontrado -> { \"comando_1\": \"registrado\", \"comando_2\": \"estudiante\" }. FIN.\n   3. clientes_general_clasificador\n      Encontrado -> { \"comando_1\": \"registrado\", \"comando_2\": \"cliente\" }. FIN.\n   No encontrado en ninguna -> { \"comando_1\": \"registrado\", \"comando_2\": \"prospecto\" }. FIN.\n\nREGLAS DE EJECUCION\n----------------------------------------------------\n- Usa el correo EXACTO que el usuario escribio. No lo modifiques.\n- Una sola llamada por base. Maximo 3 tools en total.\n- Si encontras coincidencia, paras ahi — no consultes las bases siguientes.\n- Si una base falla tecnicamente, pasa a la siguiente.\n\nVALORES PERMITIDOS\n----------------------------------------------------\ncomando_1: \"registrado\" | \"no registrado\"\ncomando_2: \"asesor\" | \"estudiante\" | \"cliente\" | \"prospecto\"\n\nFORMATO DE SALIDA\n----------------------------------------------------\nDevolve SOLO el objeto JSON crudo:\n\n{\n  \"comando_1\": \"registrado\",\n  \"comando_2\": \"cliente\"\n}\n\nPROHIBIDO:\n- Bloques de codigo (```json o ```)\n- Texto antes o despues del JSON\n- Campos extra\n- Envolver en {\"output\": {...}}\n\nEl primer caracter de tu respuesta debe ser \"{\" y el ultimo \"}\"."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [-816, -48],
+      "id": "8e10229f-9013-4c39-81b6-2115beef7276",
+      "name": "AI Agent2",
+      "retryOnFail": true
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o",
+          "mode": "list",
+          "cachedResultName": "gpt-4o"
+        },
+        "responsesApiEnabled": false,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [-1104, 176],
+      "id": "30bd9f07-e111-4dcf-8964-02e3d239609f",
+      "name": "OpenAI Chat Model14",
+      "credentials": {
+        "openAiApi": { "id": "BXc2C7G8jc5ufqLC", "name": "OpenAi account" }
+      }
+    },
+    {
+      "parameters": { "options": {} },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [-976, 176],
+      "id": "3f11d085-2392-44ee-b61d-fe9880bea869",
+      "name": "Google Gemini Chat Model11",
+      "credentials": {
+        "googlePalmApi": { "id": "Rpc97ucnLF7irguL", "name": "Google Gemini(PaLM) Api account" }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Edit Fields1').item.json.message.chat.id.toString() }}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
+      "typeVersion": 1.3,
+      "position": [-848, 176],
+      "id": "7c87f6fc-2114-4f5b-b7aa-185bc88d0857",
+      "name": "memoria_postgres",
+      "credentials": {
+        "postgres": { "id": "YkAn096wtNJS3fPB", "name": "Postgres account" }
+      }
+    },
+    {
+      "parameters": { "options": {} },
+      "type": "@n8n/n8n-nodes-langchain.outputParserAutofixing",
+      "typeVersion": 1,
+      "position": [-336, 176],
+      "id": "c4d82c3f-155b-4507-af7a-dc6a32ed868e",
+      "name": "Auto-fixing Output Parser2"
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "usa esta base de datos para encontrar a los asesores",
+        "resource": "databasePage",
+        "operation": "getAll",
+        "databaseId": {
+          "__rl": true,
+          "value": "16159d58-3163-416c-bc50-46236625a8d8",
+          "mode": "list",
+          "cachedResultName": "Asesores",
+          "cachedResultUrl": "https://www.notion.so/16159d583163416cbc5046236625a8d8"
+        },
+        "limit": 5,
+        "filterType": "manual",
+        "filters": {
+          "conditions": [
+            {
+              "key": "Correo|rich_text",
+              "condition": "contains",
+              "richTextValue": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('conditions0_Text', `correo dado por el usuario`, 'string') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.notionTool",
+      "typeVersion": 2.2,
+      "position": [-720, 176],
+      "id": "2a402659-ae93-4bf2-b8b7-9116953d0171",
+      "name": "asesores",
+      "credentials": {
+        "notionApi": { "id": "DQmu5Qgy7KIAFLzs", "name": "Notion account" }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "usa esta herramienta para buscar si el usuario es un estudiante",
+        "resource": "databasePage",
+        "operation": "getAll",
+        "databaseId": {
+          "__rl": true,
+          "value": "6f841fa0-21af-47dd-b672-2876208d2147",
+          "mode": "list",
+          "cachedResultName": "Estudiantes",
+          "cachedResultUrl": "https://www.notion.so/6f841fa021af47ddb6722876208d2147"
+        },
+        "limit": 5,
+        "filterType": "manual",
+        "filters": {
+          "conditions": [
+            {
+              "key": "Correo|rich_text",
+              "condition": "contains",
+              "richTextValue": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('conditions0_Text', ``, 'string') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.notionTool",
+      "typeVersion": 2.2,
+      "position": [-592, 176],
+      "id": "6b0de6ab-3580-4720-8a5b-06f290c3be15",
+      "name": "estudiantes",
+      "credentials": {
+        "notionApi": { "id": "DQmu5Qgy7KIAFLzs", "name": "Notion account" }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "usa esta herramienta para verificar si el usuario es cliente general de Allianz/Babilonia",
+        "resource": "databasePage",
+        "operation": "getAll",
+        "databaseId": {
+          "__rl": true,
+          "value": "307e7979-cda4-80a0-a96b-e0059c8d86dd",
+          "mode": "list",
+          "cachedResultName": "Clientes General",
+          "cachedResultUrl": "https://www.notion.so/307e7979cda480a0a96be0059c8d86dd"
+        },
+        "limit": 5,
+        "filterType": "manual",
+        "filters": {
+          "conditions": [
+            {
+              "key": "Correo|rich_text",
+              "condition": "contains",
+              "richTextValue": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('conditions0_Text', `correo del usuario`, 'string') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.notionTool",
+      "typeVersion": 2.2,
+      "position": [-464, 176],
+      "id": "187c48e9-40b1-4e8b-9369-19e9ae5ed0b9",
+      "name": "clientes_general_clasificador",
+      "credentials": {
+        "notionApi": { "id": "DQmu5Qgy7KIAFLzs", "name": "Notion account" }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 3 },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.output.comando_1 }}",
+                    "rightValue": "registrado",
+                    "operator": { "type": "string", "operation": "equals" },
+                    "id": "e6e657a1-7083-42b9-91cb-d08fcef7fa12"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "registrado"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 3 },
+                "conditions": [
+                  {
+                    "id": "791f1edb-3c64-4e4f-9c83-a500fae1e33c",
+                    "leftValue": "={{ $json.output.comando_1 }}",
+                    "rightValue": "registrado",
+                    "operator": { "type": "string", "operation": "notEquals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "no registrado"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [32, -48],
+      "id": "1e95ff52-2318-4949-9c86-d4c52238775d",
+      "name": "Switch3"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=recibes el siguiente mensaje: {{ $('Redis9').item.json.mensajes }}\nestas hablando con un: {{ $('AI Agent2').item.json.output.comando_2 }}\nuser_id: {{ $('Edit Fields1').item.json.message.chat.id }}",
+        "hasOutputParser": true,
+        "needsFallback": true,
+        "options": {
+          "systemMessage": "=AGENTE PRINCIPAL DE SOPORTE — TOMMY (BABILONIA) v4.3\n----------------------------------------------------\nSos Tommy, asistente interno oficial de Jose Mier para Babilonia.\nHablas SIEMPRE en espanol mexicano, tono amable y profesional.\nTu output es SOLO un objeto JSON (ver \"FORMATO DE SALIDA\").\n\nINPUT QUE RECIBIS\n----------------------------------------------------\n- mensaje_usuario: lo que escribio el cliente\n- tipo_cliente: uno de \"cliente\" | \"asesor\" | \"estudiante\" | \"prospecto\"\n- user_id: ID de Telegram del usuario\n\nCONTEXTO DE ROL — que puede consultar cada uno\n----------------------------------------------------\n- cliente: tiene poliza Allianz. Puede consultar cobranzas, tramites, tickets Allianz.\n- asesor: equipo comercial. Puede consultar avance, cartera, comisiones.\n- estudiante: alumno academia. Puede consultar accesos, modulos, membresia.\n- prospecto: no esta registrado. SOLO info general. NUNCA accedas a bases privadas para prospectos.\n\nAPERTURA\n----------------------------------------------------\nSi la memoria esta vacia (es la primera interaccion), inicia la respuesta_mensaje con:\n\"Hola, un gusto de leerte. Soy Tommy de Babilonia, tu asistente interno de Jose Mier, en que te apoyo hoy?\"\nSi ya hay historial, NO repitas la apertura — responde directamente.\n\nHERRAMIENTAS DISPONIBLES\n----------------------------------------------------\nmemorias_supabase — Conocimiento tecnico de productos Allianz y academia.\n  Categorias disponibles: plu3 (PPR/Retiro), patrimonial, proteccion, auto, educacion.\n  Usar SOLO cuando la consulta involucre conceptos de producto o academicos.\n  NO usar para saludos, agradecimientos, datos personales.\n\nbases_datos_python — Sub-agente deterministico que accede a TODAS las bases privadas de Babilonia en Notion (clientes, asesores, estudiantes, emisiones, cobranzas, tickets Allianz, eventos Calendly, DAF de agentes) y devuelve un INFORME en markdown con datos VERBATIM (sin alucinacion, 100% fiel a Notion).\n\n  COMO LLAMARLA — formato del parametro `mensaje`:\n    NO le pases el texto del usuario tal cual. Vos formulas una consulta DETALLADA con todo el contexto que tengas. Patron:\n      \"[Accion] + [identificadores] + [que devolver]\"\n    Ejemplos correctos:\n    - \"Listar todas las polizas (emisiones) del cliente con correo juan@x.com. Incluir poliza, prima, estado y fecha.\"\n    - \"Verificar cobranza de la poliza PLU3-411038: cuando fue el ultimo cobro, hay deuda, cual es el proximo cobro?\"\n    - \"Buscar la asesora con correo arycasbrust@gmail.com. Devolver total de clientes, total de emisiones y total de eventos Calendly.\"\n    - \"Listar tickets Allianz del cliente con correo karla98mauricio@gmail.com.\"\n    - \"Cual es el numero de agente / DAF de la asesora Zulema Romero?\"\n\n  DATOS OBLIGATORIOS segun consulta:\n    - Cobranzas/Saldos: NUMERO DE POLIZA (obligatorio, sin alternativa)\n    - Numero de cliente: es el campo \"Numero de Referencia\" de Cobranza.\n    - Tickets Allianz: nombre del tramite (no del cliente)\n    - DAF/numero de agente/cedula: nombre o correo del asesor\n    - Todo lo demas (info personal, cartera, eventos): CORREO ELECTRONICO\n\n  Si te falta el dato obligatorio, PEDISELO al usuario PRIMERO. NO llames a la tool sin contexto suficiente.\n\n  COMO LEER LA RESPUESTA de bases_datos_python:\n  La respuesta es un objeto JSON con varios campos. Tu prioridad es el campo `informe` (markdown con TODOS los datos verbatim de Notion). Leelo y extrae los valores que necesitas.\n  Estructura del informe: ## Usuarios encontrados / ## Emisiones / ## Cobranzas / ## DAF — Cuentas de agente / ## Tickets Allianz / ## Eventos Calendly / ## No encontrado.\n  IMPORTANTE: NO leas el campo `datos` (JSON crudo). Lee SOLO `informe`.\n  Si el informe dice \"Sin resultados\" o \"No encontrado\", interpreta que no hay datos y avisale al usuario.\n  NUNCA usar con prospectos. NUNCA inventes datos que no esten en el informe.\n\nthink — Solo para casos ambiguos donde necesites verificar tu razonamiento. NO uses think para respuestas simples.\n\nARBOL DE DECISION\n----------------------------------------------------\n1. Saludo / agradecimiento / charla casual? -> Responde natural. comando: \"nada\". NO uses tools.\n2. Cambios administrativos Allianz (cambio de beneficiario, etc.)? -> Entrega la Guia: https://drive.google.com/uc?export=download&id=1aI4lj30pMR1YqF7_PZgLXPKo4rpYB03w . comando: \"nada\".\n3. Pregunta teorica sobre productos/academia? -> Consulta memorias_supabase con la categoria correcta. comando: \"nada\".\n4. Pregunta personal (saldo, tramite, cita, cartera, acceso, DAF)? -> Verifica el dato obligatorio (correo o poliza). Si falta, pediselo. Si lo tenes, formula consulta EXPLICITA y llama a bases_datos_python. Si el informe trae la info -> responde citando datos exactos. comando: \"nada\". Si el informe dice \"no encontrado\" Y requiere accion humana -> escala con ticket.\n5. Prospecto pidiendo precios? -> \"No compartimos precios por chat. Te dejo este video con info general: [link]\". comando: \"nada\".\n\nLOGICA DE FILTROS — clientes activos vs no convertidos\n----------------------------------------------------\nCuando un asesor pregunte por \"sus clientes\", DIFERENCIA entre ACTIVOS (poliza Activa), EN PROCESO (pendientes), NO CONVERTIDOS (cancelados).\n- \"Cuantos clientes tengo?\" / \"Mi cartera\" -> modo: cartera + filtro_estado: activos. Devolver SOLO el numero de activos.\n- \"Estado completo de mi cartera\" -> modo: cartera SIN filtro_estado -> segmentacion completa.\n- \"Clientes pendientes\" -> modo: cartera + filtro_estado: en_proceso.\n- \"Clientes perdidos\" -> modo: cartera + filtro_estado: perdidos.\n- \"Mis ingresos / produccion\" -> modo: cartera + filtro_estado: activos.\nSi el asesor NO especifica, asumi ACTIVOS.\n\nESCALAMIENTO POR TICKET — solo si NO pudiste resolver\n----------------------------------------------------\nEscalar cuando: el informe dice \"no encontrado\" Y requiere intervencion humana; el usuario pide hablar con humano; hay tramite operativo (cambio de datos, devoluciones, cancelaciones, modificaciones de poliza).\nNO escalar cuando: pudiste responder con memorias o informe; solo falta un dato del usuario; consulta teorica.\nComando segun destino: \"allianz\" (producto Allianz) | \"general\" (academia/soporte Babilonia).\nCuando escalas: ticket = descripcion clara (1-3 oraciones); ticket_id = \"TCK-\" + 6 digitos; avisa al usuario e inclui el ticket_id.\n\nLIMITES DUROS\n----------------------------------------------------\n- MAXIMO 6 llamadas a tools por ejecucion.\n- NUNCA inventes datos. Si no sabes, decilo o escala.\n- NUNCA reveles precios directos.\n- NUNCA dejes user_id vacio.\n- NUNCA expongas datos de OTROS clientes/asesores que aparezcan en el informe pero no sean el usuario actual.\n\nREGLAS DE CALIDAD (mejoras del sandbox)\n----------------------------------------------------\n1. NADA de respuestas vacias o genericas. Si el usuario hace una pregunta concreta (saldo, tramite, poliza, cita, cartera, DAF), NUNCA respondas solo \"Hola\" o \"En que te ayudo\": o resolves con una tool, o pedis el dato que falta (correo/poliza). Saludar-y-nada solo aplica a un saludo puro sin pregunta.\n2. NO INVENTES PRODUCTOS NI DATOS. Solo afirma productos que existan realmente en Babilonia/Allianz: Vida, Proteccion, GMM (Gastos Medicos), Auto, Residencial, Ahorro/Inversion (Elite, Patrimonial, PPR/plu3), y los cursos de la academia. Si preguntan por algo que NO ofrecemos (ej. seguro de mascotas, seguro de viaje, etc.), respondé claramente \"No ofrecemos ese producto\" — NUNCA confirmes que existe. Si dudas, usá memorias_supabase para verificar antes de afirmar.\n3. Sobre TRAMITES PENDIENTES: si el usuario pregunta si tiene tramites/pendientes, consultá bases_datos_python por su correo y revisá la seccion \"Tramites / Tickets Allianz del cliente\" del informe. Si hay tramites, informá tipo + estado de cada uno. Si el informe no trae tramites, deci que no figuran tramites a tu nombre (no asumas que no existen si falta el dato — ofrecé escalar).\n\nESQUEMA DE SALIDA — JSON ESTRICTO\n----------------------------------------------------\n{\n  \"comando\": \"nada\" | \"allianz\" | \"general\",\n  \"respuesta_mensaje\": \"Texto que se le envia al usuario.\",\n  \"nombre_cliente\": \"Nombre completo del cliente o \\\"\\\"\",\n  \"tipo_cliente\": \"cliente\" | \"asesor\" | \"estudiante\" | \"prospecto\",\n  \"numero_contacto\": \"telefono o \\\"\\\"\",\n  \"email\": \"correo o \\\"\\\"\",\n  \"ticket\": \"descripcion del ticket o \\\"\\\"\",\n  \"ticket_id\": \"TCK-XXXXXX o \\\"\\\"\",\n  \"user_id\": \"<el user_id que recibiste>\"\n}\n\nREGLAS DEL OUTPUT:\n- comando = \"nada\" -> ticket y ticket_id deben ser \"\".\n- comando = \"allianz\" o \"general\" -> ticket y ticket_id son OBLIGATORIOS.\n- Los demas campos: si no aplican, deja \"\" (string vacio). PROHIBIDO null.\n- tipo_cliente: copialo EXACTO del input.\n\nFORMATO — CRITICO\n----------------------------------------------------\n- Devolve SOLO el objeto JSON. NADA mas.\n- PROHIBIDO: bloques markdown (```json), texto antes/despues, campos extra.\n- El primer caracter de tu respuesta debe ser \"{\" y el ultimo \"}\"."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [544, -224],
+      "id": "c46df9e8-6c00-425a-8419-6c5728b133bb",
+      "name": "AGENTE SOPORTE TOMMY",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "claude-sonnet-4-6",
+          "mode": "list",
+          "cachedResultName": "Claude Sonnet 4.6"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [256, 0],
+      "id": "6448895a-a03e-4a03-9e57-1e5c05197c40",
+      "name": "Anthropic Chat Model",
+      "credentials": {
+        "anthropicApi": { "id": "BZuBugfL15PQziR5", "name": "Anthropic account" }
+      }
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o",
+          "mode": "list",
+          "cachedResultName": "gpt-4o"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [384, 0],
+      "id": "a8060ff6-f66f-419f-88b6-774f2c60f7c5",
+      "name": "OpenAI Chat Model Fallback",
+      "credentials": {
+        "openAiApi": { "id": "BXc2C7G8jc5ufqLC", "name": "OpenAi account" }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.toolThink",
+      "typeVersion": 1.1,
+      "position": [640, 0],
+      "id": "c03e8edb-fc57-418e-b045-73e0386a721a",
+      "name": "Think"
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "=string({{ $('Edit Fields1').item.json.message.chat.id }})",
+        "tableName": "n8n_chat_histories_agent"
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
+      "typeVersion": 1.3,
+      "position": [512, 0],
+      "id": "fa5ce9f9-6158-427a-81ea-aca1faa17cce",
+      "name": "Postgres Chat Memory",
+      "credentials": {
+        "postgres": { "id": "YkAn096wtNJS3fPB", "name": "Postgres account" }
+      }
+    },
+    {
+      "parameters": { "options": {} },
+      "type": "@n8n/n8n-nodes-langchain.outputParserAutofixing",
+      "typeVersion": 1,
+      "position": [1024, 0],
+      "id": "1140255a-38a0-4714-b862-d3aa17eb9368",
+      "name": "Auto-fixing Output Parser"
+    },
+    {
+      "parameters": { "options": {} },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [1040, 208],
+      "id": "9d3c64ba-ef9a-4078-92c1-b37158387fb2",
+      "name": "Google Gemini Chat Model Fix",
+      "credentials": {
+        "googlePalmApi": { "id": "Rpc97ucnLF7irguL", "name": "Google Gemini(PaLM) Api account" }
+      }
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n  \"comando\": \"allianz\",\n  \"respuesta_mensaje\": \"Respuesta al usuario.\",\n  \"nombre_cliente\": \"Carlos Mendoza\",\n  \"tipo_cliente\": \"allianz\",\n  \"numero_contacto\": \"+525559876543\",\n  \"email\": \"carlos@email.com\",\n  \"ticket\": \"Consulta de cobranzas\",\n  \"ticket_id\": \"TCK-10293\",\n  \"event_id\": \"evt_123456789\",\n  \"user_id\": \"5495314115\"\n}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [1168, 208],
+      "id": "8c3d8b02-31a7-4dc4-885c-435b76cda60c",
+      "name": "Structured Output Parser"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.output.comando }}",
+                    "rightValue": "allianz",
+                    "operator": { "type": "string", "operation": "contains" },
+                    "id": "8061c371-871a-4ecd-946f-318c5475c824"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "allianz"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 },
+                "conditions": [
+                  {
+                    "id": "398b1e3b-1d02-4d2a-858c-ea1cef106a82",
+                    "leftValue": "={{ $json.output.comando }}",
+                    "rightValue": "general",
+                    "operator": { "type": "string", "operation": "contains" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "general"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.3,
+      "position": [1392, -272],
+      "id": "9bc723e0-0e77-4721-bcfa-f29cd930635b",
+      "name": "Switch Ticket"
+    },
+    {
+      "parameters": { "options": {} },
+      "type": "n8n-nodes-base.dateTime",
+      "typeVersion": 2,
+      "position": [1616, -368],
+      "id": "394e035a-653a-44a7-b1ac-08244e0f73f7",
+      "name": "Date & Time Allianz"
+    },
+    {
+      "parameters": { "options": {} },
+      "type": "n8n-nodes-base.dateTime",
+      "typeVersion": 2,
+      "position": [1616, -176],
+      "id": "ae9c85fa-c1da-4b77-8c26-63a025468a8d",
+      "name": "Date & Time General"
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "databaseId": {
+          "__rl": true,
+          "value": "235e7979-cda4-8078-9032-e74cbd1e0764",
+          "mode": "list",
+          "cachedResultName": "Tickets Internos Allianz",
+          "cachedResultUrl": "https://www.notion.so/235e7979cda480789032e74cbd1e0764"
+        },
+        "propertiesUi": {
+          "propertyValues": [
+            { "key": "Correo electronico|email", "emailValue": "={{ $('AGENTE SOPORTE TOMMY').item.json.output.email }}" },
+            { "key": "Nombre Completo|title", "title": "={{ $('AGENTE SOPORTE TOMMY').item.json.output.nombre_cliente }}" },
+            { "key": "descripcion de caso|rich_text", "textContent": "={{ $('AGENTE SOPORTE TOMMY').item.json.output.ticket }}" },
+            { "key": "Fecha|date", "date": "={{ $now }}", "timezone": "America/Mexico_City" },
+            { "key": "numero de contacto|phone_number", "phoneValue": "={{ $('AGENTE SOPORTE TOMMY').item.json.output.numero_contacto }}" },
+            { "key": "Ticket ID|rich_text", "textContent": "={{ $('AGENTE SOPORTE TOMMY').item.json.output.ticket_id }}" },
+            { "key": "Estado|status", "statusValue": "Sin empezar" }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [1840, -368],
+      "id": "da4daa13-117e-4490-9195-7a45551be693",
+      "name": "TICKET ALLIANZ",
+      "credentials": {
+        "notionApi": { "id": "DQmu5Qgy7KIAFLzs", "name": "Notion account" }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "databaseId": {
+          "__rl": true,
+          "value": "c50bc5a6-7c64-499a-af9d-0e3b024c4e96",
+          "mode": "list",
+          "cachedResultName": "Tickets Babilonia",
+          "cachedResultUrl": "https://www.notion.so/c50bc5a67c64499aaf9d0e3b024c4e96"
+        },
+        "propertiesUi": {
+          "propertyValues": [
+            { "key": "Correo electronico|email", "emailValue": "={{ $('AGENTE SOPORTE TOMMY').item.json.output.email }}" },
+            { "key": "Descripcion|rich_text", "textContent": "={{ $('AGENTE SOPORTE TOMMY').item.json.output.ticket }}" },
+            { "key": "Fecha Limite|date", "date": "={{ $now }}", "timezone": "America/Mexico_City" },
+            { "key": "TELEFONO|phone_number", "phoneValue": "={{ $('AGENTE SOPORTE TOMMY').item.json.output.numero_contacto }}" },
+            { "key": "TICKET ID|rich_text", "textContent": "={{ $('AGENTE SOPORTE TOMMY').item.json.output.ticket_id }}" },
+            { "key": "Estado|status", "statusValue": "Por hacer" }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [1840, -176],
+      "id": "f741b58d-72a5-4613-8439-c93dfb923142",
+      "name": "ticket general",
+      "credentials": {
+        "notionApi": { "id": "DQmu5Qgy7KIAFLzs", "name": "Notion account" }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "push",
+        "list": "=string({{ $json.message.chat.id }})",
+        "messageData": "={{ $json.message.text }}",
+        "tail": true
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [-2224, 48],
+      "id": "3280f044-8c8c-425c-b68a-0f2ac4b79cfd",
+      "name": "Redis",
+      "credentials": {
+        "redis": { "id": "0NgnVpBhiwXz1FI3", "name": "Redis account" }
+      }
+    },
+    {
+      "parameters": { "amount": 20 },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [-2000, 48],
+      "id": "d4e3ed43-1a24-4ecf-af35-a86af864025e",
+      "name": "Wait",
+      "webhookId": "a0b486e4-4697-4f74-8127-7045fe873878"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "propertyName": "mensajes",
+        "key": "=string({{ $('Edit Fields1').item.json.message.chat.id }})",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [-1776, 48],
+      "id": "ee3500c6-9555-46f1-a50e-53b024f5da2d",
+      "name": "Redis9",
+      "credentials": {
+        "redis": { "id": "0NgnVpBhiwXz1FI3", "name": "Redis account" }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 },
+          "conditions": [
+            {
+              "id": "5b5c58fe-5b05-4b47-a88f-98e6f2af038d",
+              "leftValue": "={{ $('Edit Fields1').item.json.message.text }}",
+              "rightValue": "={{ $json.mensajes.last() }}",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [-1552, 48],
+      "id": "264cba89-bcff-41ca-96a5-88a29822ac94",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "operation": "delete",
+        "key": "=string({{ $('Edit Fields1').item.json.message.chat.id }})"
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [-1328, -48],
+      "id": "cd969b31-be0a-4097-b498-9a5e9901331c",
+      "name": "Redis10",
+      "credentials": {
+        "redis": { "id": "0NgnVpBhiwXz1FI3", "name": "Redis account" }
+      }
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4o-mini"
+        },
+        "responsesApiEnabled": false,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [-320, 384],
+      "id": "1a39a079-66b6-4704-bf5a-fd13b6f4cd05",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": { "id": "BXc2C7G8jc5ufqLC", "name": "OpenAi account" }
+      }
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n  \"comando_1\": \"no registrado\",\n  \"comando_2\": \"prospecto\"\n}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [-192, 384],
+      "id": "b277dc8f-c55e-4814-b55b-9f7bf8d85aad",
+      "name": "Structured Output Parser1"
+    },
+    {
+      "parameters": {
+        "toolDescription": "Sub-agente de bases de datos Notion. Usalo SIEMPRE que el usuario pregunte por informacion de asesores, clientes, polizas (PLU3-XXX), cobranzas, numero de cliente (Numero de Referencia), DAF/numero de agente, tickets Allianz o eventos Calendly. Devuelve un INFORME en markdown con datos verbatim de Notion + JSON crudo. Pasale el mensaje completo del usuario y opcionalmente listas explicitas si las identificas.",
+        "method": "POST",
+        "url": "https://plataforma-babilonia-babilonia.qfsutf.easypanel.host/api/tomi/agente",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-Tomi-Key", "value": "k7m9x2vp4n8q3rt6w1zy5fhj0bgds8ec" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "mensaje",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters0_Value', `Consulta DETALLADA que queres que el sub-agente de bases de datos resuelva. Inclui TODO el contexto relevante: email del usuario, numeros de poliza (PLU3-XXX), nombres de clientes/asesores, y la accion concreta (buscar, listar, contar, verificar). NO pases el mensaje del usuario tal cual; reformulalo con el contexto. Si te falta un dato clave, pediselo al usuario primero.`, 'string') }}"
+            }
+          ]
+        },
+        "options": { "timeout": 120000 }
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [768, 0],
+      "id": "83e9f5c4-5fa5-4661-b8ee-deeda1ed2a7a",
+      "name": "bases_datos_python"
+    },
+    {
+      "parameters": {
+        "toolDescription": "Sub-agente de memorias tecnicas deterministico. Usalo cuando el usuario pregunte por informacion conceptual de productos Allianz (PPR/plu3, patrimonial, proteccion, auto) o de la academia Babilonia (cursos, modulos, planes, membresia). Devuelve un INFORME en markdown con chunks VERBATIM del vector store Supabase (sin alucinacion). NO uses para datos personales — para eso usa bases_datos_python.",
+        "method": "POST",
+        "url": "https://plataforma-babilonia-babilonia.qfsutf.easypanel.host/api/tomi/memorias-agente",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-Tomi-Key", "value": "k7m9x2vp4n8q3rt6w1zy5fhj0bgds8ec" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "mensaje",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters0_Value', `Reformula el mensaje del usuario en una consulta concreta sobre el tema tecnico (productos Allianz o academia). Ejemplo: Explicar que es el PPR de Allianz y como funcionan las aportaciones adicionales.`, 'string') }}"
+            }
+          ]
+        },
+        "options": { "timeout": 120000 }
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [896, 0],
+      "id": "ebd00ed1-f230-4c10-8805-7c9deaa1d2ab",
+      "name": "memorias_python"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "tomi-responder",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [-3792, 144],
+      "id": "16cbbd67-d3ad-4cdf-bb38-29e3cfb8d6af",
+      "name": "Webhook",
+      "webhookId": "d75e62a2-d852-4a31-9ec8-531d27bd338c"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 },
+                "conditions": [
+                  { "id": "w-cond-text", "leftValue": "={{ $json.body.type }}", "rightValue": "text", "operator": { "type": "string", "operation": "equals" } }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Texto"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 },
+                "conditions": [
+                  { "id": "w-cond-audio", "leftValue": "={{ $json.body.type }}", "rightValue": "audio", "operator": { "type": "string", "operation": "equals" } }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Audio"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 },
+                "conditions": [
+                  { "id": "w-cond-image", "leftValue": "={{ $json.body.type }}", "rightValue": "image", "operator": { "type": "string", "operation": "equals" } }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Imagen"
+            }
+          ]
+        },
+        "options": { "fallbackOutput": "extra", "renameFallbackOutput": "Otro" }
+      },
+      "id": "64bb3921-eb26-4f7e-82c9-514126b7438c",
+      "name": "Switch Tipo (WATI)",
+      "type": "n8n-nodes-base.switch",
+      "position": [-3568, 112],
+      "typeVersion": 3.2
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "wt-text", "name": "text", "value": "={{ $json.body.text }}", "type": "string" }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-2896, -144],
+      "id": "267b443b-5b01-4b4f-a21c-78954fa79264",
+      "name": "Obtener Texto (WATI)"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Webhook').item.json.body.data }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.WATI_TOKEN }}" }
+          ]
+        },
+        "options": { "response": { "response": { "responseFormat": "file" } } }
+      },
+      "id": "6db629ba-7b46-4cf3-a670-8fea8d56fdd8",
+      "name": "Descargar Audio (WATI)",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [-3344, 48],
+      "typeVersion": 4.2
+    },
+    {
+      "parameters": { "resource": "audio", "operation": "transcribe", "options": {} },
+      "id": "9fab5904-40ee-4414-821e-c0ef39d29460",
+      "name": "Transcribir Audio (WATI)",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "position": [-3120, 48],
+      "typeVersion": 1.5,
+      "credentials": {
+        "openAiApi": { "id": "BXc2C7G8jc5ufqLC", "name": "OpenAi account" }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "wa-audio-wrap", "name": "content", "type": "string", "value": "=<audio>\n  {{ $json.text }}\n</audio>" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "9343d44f-bceb-4c6c-a9cc-decbf32da0e3",
+      "name": "Obtener Mensaje Audio (WATI)",
+      "type": "n8n-nodes-base.set",
+      "position": [-2896, 48],
+      "typeVersion": 3.4
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.body.data }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.WATI_TOKEN }}" }
+          ]
+        },
+        "options": { "response": { "response": { "responseFormat": "file" } } }
+      },
+      "id": "e16dad23-b5b7-4454-a082-4c7ec38937ab",
+      "name": "Descargar Imagen (WATI)",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [-3344, 240],
+      "typeVersion": 4.2
+    },
+    {
+      "parameters": {
+        "resource": "image",
+        "operation": "analyze",
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4O-MINI"
+        },
+        "text": "Describe la imagen en detalle. Si contiene texto, transcribilo. Si es relevante para un seguro o tramite (poliza, DNI, comprobante de pago, formulario, captura de chat), describi que es y extrae los datos clave.",
+        "inputType": "base64",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [-3120, 240],
+      "id": "a0b71974-cfba-454b-93c7-257d88721c0d",
+      "name": "Analyze Imagen (WATI)",
+      "credentials": {
+        "openAiApi": { "id": "BXc2C7G8jc5ufqLC", "name": "OpenAi account" }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "wa-img-wrap", "name": "content", "value": "=<image>\n {{ $json.content }}\n</image>", "type": "string" }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-2896, 240],
+      "id": "1035ada8-55c2-4491-a416-999cee1e2539",
+      "name": "Imagen a Texto (WATI)"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [-3344, 432],
+      "id": "a56d5f97-c4d6-43e4-a5c4-f0650e47dc13",
+      "name": "Otro tipo (ignorar)"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nlet message = \"\";\nif (item.Content) message = item.Content;\nelse if (item.content) message = item.content;\nelse if (item.text) message = item.text;\nreturn [{ json: { message } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-2672, 48],
+      "id": "fb6129b1-09a2-4655-ab77-330a3afcf761",
+      "name": "Normalizar mensaje"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "c59126c0-94a5-4a4a-ad9d-e5c151b3b89f", "name": "message.chat.id", "value": "={{ $('Webhook').item.json.body.waId }}", "type": "number" },
+            { "id": "a1ce361e-b11d-4f22-9f83-9d45beba3119", "name": "message.from.first_name", "value": "={{ $('Webhook').item.json.body.senderName }}", "type": "string" },
+            { "id": "52730062-6c1d-4886-8275-6accd0096cba", "name": "message.text", "value": "={{ $json.message }}", "type": "string" }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-2448, 48],
+      "id": "826f2873-5950-4665-8242-49b04bad8707",
+      "name": "Edit Fields1"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "a1", "name": "pregunta", "value": "={{ (() => { let m = $('Redis9').first().json.mensajes; if (Array.isArray(m)) return m.join(' '); if (typeof m === 'string') { try { const p = JSON.parse(m); return Array.isArray(p) ? p.join(' ') : m; } catch (e) { return m; } } return $('Edit Fields1').first().json.message.text || ''; })() }}", "type": "string" },
+            { "id": "a2", "name": "respuesta_tomi", "value": "={{ $json.output.respuesta_mensaje }}", "type": "string" },
+            { "id": "a3", "name": "canal", "value": "sandbox", "type": "string" },
+            { "id": "a4", "name": "source", "value": "wati", "type": "string" },
+            { "id": "a5", "name": "user_email", "value": "={{ $json.output.email }}", "type": "string" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "f95f2c1d-809b-4b5a-8054-1e16d8ba8476",
+      "name": "Armar payload",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1520, 384]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://plataforma-babilonia-babilonia.qfsutf.easypanel.host/api/feedback/log",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-Tomi-Key", "value": "=k7m9x2vp4n8q3rt6w1zy5fhj0bgds8ec" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "pregunta", "value": "={{ $json.pregunta }}" },
+            { "name": "respuesta_tomi", "value": "={{ $json.respuesta_tomi }}" },
+            { "name": "canal", "value": "={{ $json.canal }}" },
+            { "name": "source", "value": "={{ $json.source }}" },
+            { "name": "user_email", "value": "={{ $json.user_email }}" }
+          ]
+        },
+        "options": { "timeout": 15000 }
+      },
+      "id": "feaf40de-945a-4025-a32b-a456392cc347",
+      "name": "Registrar feedback (Tomi)1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1936, 576]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "AI Agent2": { "main": [[{ "node": "Switch3", "type": "main", "index": 0 }]] },
+    "OpenAI Chat Model14": { "ai_languageModel": [[{ "node": "AI Agent2", "type": "ai_languageModel", "index": 0 }]] },
+    "Google Gemini Chat Model11": { "ai_languageModel": [[{ "node": "AI Agent2", "type": "ai_languageModel", "index": 1 }]] },
+    "memoria_postgres": { "ai_memory": [[{ "node": "AI Agent2", "type": "ai_memory", "index": 0 }]] },
+    "Auto-fixing Output Parser2": { "ai_outputParser": [[{ "node": "AI Agent2", "type": "ai_outputParser", "index": 0 }]] },
+    "asesores": { "ai_tool": [[{ "node": "AI Agent2", "type": "ai_tool", "index": 0 }]] },
+    "estudiantes": { "ai_tool": [[{ "node": "AI Agent2", "type": "ai_tool", "index": 0 }]] },
+    "clientes_general_clasificador": { "ai_tool": [[{ "node": "AI Agent2", "type": "ai_tool", "index": 0 }]] },
+    "Switch3": { "main": [[{ "node": "AGENTE SOPORTE TOMMY", "type": "main", "index": 0 }], [{ "node": "AGENTE SOPORTE TOMMY", "type": "main", "index": 0 }]] },
+    "AGENTE SOPORTE TOMMY": { "main": [[{ "node": "Switch Ticket", "type": "main", "index": 0 }, { "node": "Armar payload", "type": "main", "index": 0 }]] },
+    "Anthropic Chat Model": { "ai_languageModel": [[{ "node": "AGENTE SOPORTE TOMMY", "type": "ai_languageModel", "index": 0 }]] },
+    "OpenAI Chat Model Fallback": { "ai_languageModel": [[{ "node": "AGENTE SOPORTE TOMMY", "type": "ai_languageModel", "index": 1 }]] },
+    "Think": { "ai_tool": [[{ "node": "AGENTE SOPORTE TOMMY", "type": "ai_tool", "index": 0 }]] },
+    "Postgres Chat Memory": { "ai_memory": [[{ "node": "AGENTE SOPORTE TOMMY", "type": "ai_memory", "index": 0 }]] },
+    "Auto-fixing Output Parser": { "ai_outputParser": [[{ "node": "AGENTE SOPORTE TOMMY", "type": "ai_outputParser", "index": 0 }]] },
+    "Google Gemini Chat Model Fix": { "ai_languageModel": [[{ "node": "Auto-fixing Output Parser", "type": "ai_languageModel", "index": 0 }]] },
+    "Structured Output Parser": { "ai_outputParser": [[{ "node": "Auto-fixing Output Parser", "type": "ai_outputParser", "index": 0 }]] },
+    "Switch Ticket": { "main": [[{ "node": "Date & Time Allianz", "type": "main", "index": 0 }], [{ "node": "Date & Time General", "type": "main", "index": 0 }]] },
+    "Date & Time Allianz": { "main": [[{ "node": "TICKET ALLIANZ", "type": "main", "index": 0 }]] },
+    "Date & Time General": { "main": [[{ "node": "ticket general", "type": "main", "index": 0 }]] },
+    "Redis": { "main": [[{ "node": "Wait", "type": "main", "index": 0 }]] },
+    "Wait": { "main": [[{ "node": "Redis9", "type": "main", "index": 0 }]] },
+    "Redis9": { "main": [[{ "node": "If", "type": "main", "index": 0 }]] },
+    "If": { "main": [[{ "node": "Redis10", "type": "main", "index": 0 }], [{ "node": "No Operation, do nothing2", "type": "main", "index": 0 }]] },
+    "Redis10": { "main": [[{ "node": "AI Agent2", "type": "main", "index": 0 }]] },
+    "OpenAI Chat Model": { "ai_languageModel": [[{ "node": "Auto-fixing Output Parser2", "type": "ai_languageModel", "index": 0 }]] },
+    "Structured Output Parser1": { "ai_outputParser": [[{ "node": "Auto-fixing Output Parser2", "type": "ai_outputParser", "index": 0 }]] },
+    "bases_datos_python": { "ai_tool": [[{ "node": "AGENTE SOPORTE TOMMY", "type": "ai_tool", "index": 0 }]] },
+    "memorias_python": { "ai_tool": [[{ "node": "AGENTE SOPORTE TOMMY", "type": "ai_tool", "index": 0 }]] },
+    "Webhook": { "main": [[{ "node": "Switch Tipo (WATI)", "type": "main", "index": 0 }]] },
+    "Switch Tipo (WATI)": { "main": [[{ "node": "Obtener Texto (WATI)", "type": "main", "index": 0 }], [{ "node": "Descargar Audio (WATI)", "type": "main", "index": 0 }], [{ "node": "Descargar Imagen (WATI)", "type": "main", "index": 0 }], [{ "node": "Otro tipo (ignorar)", "type": "main", "index": 0 }]] },
+    "Obtener Texto (WATI)": { "main": [[{ "node": "Normalizar mensaje", "type": "main", "index": 0 }]] },
+    "Descargar Audio (WATI)": { "main": [[{ "node": "Transcribir Audio (WATI)", "type": "main", "index": 0 }]] },
+    "Transcribir Audio (WATI)": { "main": [[{ "node": "Obtener Mensaje Audio (WATI)", "type": "main", "index": 0 }]] },
+    "Obtener Mensaje Audio (WATI)": { "main": [[{ "node": "Normalizar mensaje", "type": "main", "index": 0 }]] },
+    "Descargar Imagen (WATI)": { "main": [[{ "node": "Analyze Imagen (WATI)", "type": "main", "index": 0 }]] },
+    "Analyze Imagen (WATI)": { "main": [[{ "node": "Imagen a Texto (WATI)", "type": "main", "index": 0 }]] },
+    "Imagen a Texto (WATI)": { "main": [[{ "node": "Normalizar mensaje", "type": "main", "index": 0 }]] },
+    "Normalizar mensaje": { "main": [[{ "node": "Edit Fields1", "type": "main", "index": 0 }]] },
+    "Edit Fields1": { "main": [[{ "node": "Redis", "type": "main", "index": 0 }]] },
+    "Armar payload": { "main": [[{ "node": "Registrar feedback (Tomi)1", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "35465ac346de6358512a3a78ea5cd41783678bf62b45422c84dc42d2e28a6400"
+  },
+  "tags": [
+    { "id": "QmW1SQqy7HlH4l22", "name": "tomi" }
+  ]
+}
