@@ -11,8 +11,11 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 def register(data: schemas.UserCreate, db: Session = Depends(get_db)):
     if db.query(models.User).filter(models.User.email == data.email).first():
         raise HTTPException(400, "Email ya registrado")
+    # El PRIMER usuario del sistema es super-admin (el dueño). El resto, por
+    # seguridad, se registra como asesor: los roles elevados solo se asignan
+    # desde el panel (POST /api/users por un super-admin), nunca por self-register.
     is_first = db.query(models.User).count() == 0
-    role = models.UserRole.admin if is_first else data.role
+    role = models.UserRole.super_admin if is_first else models.UserRole.asesor
     user = models.User(
         email=data.email,
         full_name=data.full_name,

@@ -46,7 +46,17 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     return user
 
 
+# admin y super_admin tienen acceso completo a la plataforma.
+ADMIN_ROLES = (models.UserRole.admin, models.UserRole.super_admin)
+
+
 def require_admin(user: models.User = Depends(get_current_user)) -> models.User:
-    if user.role != models.UserRole.admin:
+    if user.role not in ADMIN_ROLES:
         raise HTTPException(403, "Requiere rol administrador")
+    return user
+
+
+def require_super_admin(user: models.User = Depends(get_current_user)) -> models.User:
+    if user.role != models.UserRole.super_admin:
+        raise HTTPException(403, "Requiere rol super administrador")
     return user
