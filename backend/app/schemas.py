@@ -17,6 +17,15 @@ class UserCreate(UserBase):
     role: UserRole = UserRole.asesor
 
 
+class UserUpdate(BaseModel):
+    """Edición de un usuario por un admin/super-admin (todos opcionales)."""
+    full_name: Optional[str] = None
+    operator_name: Optional[str] = None
+    role: Optional[UserRole] = None
+    is_active: Optional[bool] = None
+    password: Optional[str] = Field(default=None, min_length=6)
+
+
 class UserOut(UserBase):
     id: UUID
     role: UserRole

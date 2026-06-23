@@ -13,7 +13,8 @@ PK = BigInteger().with_variant(Integer(), "sqlite")
 
 
 class UserRole(str, Enum):
-    admin = "admin"
+    super_admin = "super_admin"   # ve todo + gestiona usuarios (incluye crear admins)
+    admin = "admin"               # ve todo + evalúa el sandbox
     asesor = "asesor"
 
 
