@@ -35,6 +35,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Rate limiting en los endpoints pesados de Tomi (LLM / pgvector / Notion).
+from app.services.tomi.ratelimit import RateLimitMiddleware
+app.add_middleware(RateLimitMiddleware)
+
 for r in [auth, users, dashboard, metrics, conversations, documents, agent, tomi, analytics, feedback, health]:
     app.include_router(r.router)
 

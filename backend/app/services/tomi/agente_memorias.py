@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 from app.services.tomi import memorias_bd as mbd
 from app.services.tomi import informe_memorias as inf_m
 from app.services.tomi.memorias import CATEGORIAS_VALIDAS
+from app.services.tomi.openai_cb import openai_breaker, LLM_FALLBACK_MSG
 
 log = logging.getLogger("tomi.agente_memorias")
 
@@ -149,6 +150,9 @@ def responder(
     datos_acumulados: List[Any] = []
 
     for i in range(max_iter):
+        if not openai_breaker.allow():
+            log.warning("OpenAI circuit abierto — se corta la consulta de memorias")
+            return {"error": "LLM no disponible (circuit abierto)", "informe": LLM_FALLBACK_MSG, "iteraciones": i}
         try:
             resp = client.chat.completions.create(
                 model=CHAT_MODEL,
@@ -157,9 +161,11 @@ def responder(
                 tool_choice="auto",
                 temperature=0,
             )
+            openai_breaker.record_success()
         except Exception as e:
+            openai_breaker.record_failure()
             log.error("OpenAI falló: %s", e)
-            return {"error": f"LLM falló: {e}", "iteraciones": i}
+            return {"error": f"LLM falló: {e}", "informe": LLM_FALLBACK_MSG, "iteraciones": i}
 
         msg = resp.choices[0].message
         asst_msg: Dict[str, Any] = {"role": "assistant", "content": msg.content or ""}
