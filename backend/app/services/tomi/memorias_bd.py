@@ -118,6 +118,25 @@ def consultar(
 
     embeddings_count = 1  # un solo embedding por query (cacheado entre categorías)
 
+    # 2b. Fallback: si filtramos por categoría y NO trajo nada, reintentar broad (sin filtro).
+    #     Evita responder "sin datos" cuando la info existe pero en otra categoría.
+    total_encontrados = sum(len(v) for v in chunks_por_cat.values())
+    if total_encontrados == 0 and cats_a_consultar != [None]:
+        log.info("sin resultados en %s — fallback a búsqueda broad sin filtro", cats_a_consultar)
+        try:
+            chunks_por_cat["todas"] = _buscar(None)
+            queries_count += 1
+            advertencias.append({
+                "severidad": "info",
+                "tipo": "fallback_broad",
+                "mensaje": (
+                    f"No se encontró nada en {[c for c in cats_a_consultar if c]}; "
+                    "se amplió la búsqueda a todas las memorias."
+                ),
+            })
+        except Exception as e:
+            log.error("fallback broad falló: %s", e)
+
     # 3. Unir todos los chunks ordenados por similarity DESC
     all_chunks: List[Dict[str, Any]] = []
     for cat, chunks in chunks_por_cat.items():
@@ -150,13 +169,14 @@ def consultar(
             "sugerencia": "Considerar recargar las memorias con dedupe en el ingest para no tener repetidos.",
         })
 
-    # 4. Advertencias si no hubo resultados
+    # 4. Advertencias si no hubo resultados → escalar a humano
+    escalar_a_humano = not chunks_unicos
     if not chunks_unicos:
         advertencias.append({
             "severidad": "warning",
             "tipo": "sin_resultados",
-            "mensaje": f"No se encontraron chunks relevantes (min_similarity={min_similarity}) en las categorías {cats_a_consultar}.",
-            "sugerencia": "Verificar si la información existe en las memorias. Probar con otra query o sin filtro de categoría.",
+            "mensaje": f"No se encontraron chunks relevantes (min_similarity={min_similarity}) ni siquiera ampliando la búsqueda a todas las memorias.",
+            "sugerencia": "Escalar la consulta a un humano: la información no está cargada en las memorias.",
         })
     else:
         # Advertencia si similarity bajo
@@ -175,6 +195,7 @@ def consultar(
         "categorias_consultadas": [c for c in cats_a_consultar if c],
         "chunks": chunks_unicos,
         "chunks_por_categoria": chunks_por_cat,
+        "escalar_a_humano": escalar_a_humano,
         "advertencias": advertencias,
         "stats": {
             "tiempo_ms": elapsed,

@@ -25,6 +25,7 @@ from openai import OpenAI
 from app.services.tomi import bases_datos as bd
 from app.services.tomi import notion_client as nc
 from app.services.tomi import informe as inf
+from app.services.tomi.openai_cb import openai_breaker, LLM_FALLBACK_MSG
 
 log = logging.getLogger("tomi.agente")
 
@@ -323,6 +324,9 @@ def responder(
     datos_acumulados: List[Any] = []
 
     for i in range(max_iter):
+        if not openai_breaker.allow():
+            log.warning("OpenAI circuit abierto — se corta la consulta")
+            return {"error": "LLM no disponible (circuit abierto)", "respuesta": LLM_FALLBACK_MSG, "iteraciones": i}
         try:
             resp = client.chat.completions.create(
                 model=CHAT_MODEL,
@@ -331,9 +335,11 @@ def responder(
                 tool_choice="auto",
                 temperature=0,
             )
+            openai_breaker.record_success()
         except Exception as e:
+            openai_breaker.record_failure()
             log.error("OpenAI falló: %s", e)
-            return {"error": f"LLM falló: {e}", "iteraciones": i}
+            return {"error": f"LLM falló: {e}", "respuesta": LLM_FALLBACK_MSG, "iteraciones": i}
 
         msg = resp.choices[0].message
         # Agregar el mensaje del asistente (con tool_calls si las hay)
