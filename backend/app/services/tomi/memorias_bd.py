@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import logging
 import time
-from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
@@ -99,22 +98,17 @@ def consultar(
     def _buscar(cat: Optional[str]) -> List[Dict[str, Any]]:
         return mem.buscar_chunks(db, query, categoria=cat, k=k, min_similarity=min_similarity)
 
-    if len(cats_a_consultar) > 1:
-        with ThreadPoolExecutor(max_workers=min(4, len(cats_a_consultar))) as ex:
-            futs = {ex.submit(_buscar, c): c for c in cats_a_consultar}
-            for fut in futs:
-                cat = futs[fut]
-                try:
-                    chunks = fut.result(timeout=30)
-                    chunks_por_cat[cat or "todas"] = chunks
-                    queries_count += 1
-                except Exception as e:
-                    log.error("búsqueda %s falló: %s", cat, e)
-                    chunks_por_cat[cat or "todas"] = []
-    else:
-        cat = cats_a_consultar[0]
-        chunks_por_cat[cat or "todas"] = _buscar(cat)
-        queries_count += 1
+    # Búsqueda secuencial. Son como mucho 2 categorías (rápido) y NO se puede
+    # paralelizar compartiendo la misma Session de SQLAlchemy entre hilos:
+    # tira "concurrent operations are not permitted" y se pierde una categoría.
+    # El embedding queda cacheado entre llamadas, así que el costo extra es mínimo.
+    for cat in cats_a_consultar:
+        try:
+            chunks_por_cat[cat or "todas"] = _buscar(cat)
+            queries_count += 1
+        except Exception as e:
+            log.error("búsqueda %s falló: %s", cat, e)
+            chunks_por_cat[cat or "todas"] = []
 
     embeddings_count = 1  # un solo embedding por query (cacheado entre categorías)
 
