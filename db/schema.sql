@@ -73,6 +73,20 @@ create table if not exists public.tomi_locks (
   acquired_at timestamptz not null default now()
 );
 
+-- ─── tomi_clasificaciones: memoria del sub-agente clasificador (asesor/estudiante/cliente/prospecto)
+-- Persiste por user_id la clasificación para no reconsultar Notion en cada mensaje.
+create table if not exists public.tomi_clasificaciones (
+  user_id        text primary key,            -- chat_id Telegram / wa_id WhatsApp
+  email          text,
+  comando_1      text not null,               -- "registrado" | "no registrado"
+  comando_2      text not null,               -- "asesor" | "estudiante" | "cliente" | "prospecto"
+  user_nombre    text,
+  notion_page_id text,
+  data           jsonb,
+  updated_at     timestamptz not null default now()
+);
+create index if not exists idx_tomi_clasif_email on public.tomi_clasificaciones (email);
+
 -- ─── sandbox_feedback: loop de mejora (interacciones de Tomi + correcciones de admins)
 -- También la crea SQLAlchemy (create_all); este DDL es para referencia / Supabase limpio.
 create table if not exists public.sandbox_feedback (
