@@ -23,7 +23,7 @@
         "sendBody": true,
         "bodyParameters": {
           "parameters": [
-            { "name": "user_id", "value": "={{ $('Edit Fields1').item.json.message.chat.id }}" },
+            { "name": "user_id", "value": "={{ $('Edit Fields1').item.json.message.chat.id.toString() }}" },
             { "name": "user_nombre", "value": "={{ $('Edit Fields1').item.json.message.from.first_name }}" },
             { "name": "mensaje_usuario", "value": "={{ Array.isArray($('Redis9').item.json.mensajes) ? $('Redis9').item.json.mensajes.join(' ') : $('Redis9').item.json.mensajes }}" }
           ]
