@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
 log = logging.getLogger("tomi.api")
@@ -136,6 +136,14 @@ class ClasificarUsuarioIn(BaseModel):
     email: Optional[str] = Field(None, description="Email explícito; si viene, no se parsea el mensaje")
     user_nombre: Optional[str] = None
     force: bool = Field(False, description="True para ignorar caché y reconsultar Notion")
+
+    @field_validator("user_id", "user_nombre", mode="before")
+    @classmethod
+    def _coerce_to_str(cls, v):
+        # n8n suele mandar el chat.id como número; lo aceptamos y lo pasamos a string.
+        if v is None:
+            return v
+        return str(v)
 
 
 @router.post("/clasificar-usuario")
