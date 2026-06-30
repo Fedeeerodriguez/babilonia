@@ -204,6 +204,37 @@ def borrar_clasificacion(
     return {"deleted": user_id}
 
 
+@router.get("/admin/tickets-huerfanos")
+def tickets_huerfanos(x_tomi_key: Optional[str] = Header(default=None)):
+    """Trámites Allianz SIN cliente vinculado (relación 'Clientes General' vacía).
+
+    Métrica de higiene de datos: estos huérfanos son la causa #1 de que Tomi
+    'no encuentre' trámites que sí existen. Devuelve total + lista para exportar.
+    Llamar periódicamente para medir el avance del equipo al vincularlos.
+    """
+    _auth(x_tomi_key)
+    rows = nc.tickets_allianz_sin_cliente()
+    tramites = []
+    for t in rows:
+        ases = t.get("Asesores ") or t.get("Asesor")
+        tramites.append({
+            "tramite": t.get("Nombre del Trámite"),
+            "tipo": t.get("Tipo de Trámite"),
+            "estado": t.get("Estado"),
+            "fecha_solicitud": (t.get("Fecha de Solicitud") or {}).get("start")
+                if isinstance(t.get("Fecha de Solicitud"), dict) else t.get("Fecha de Solicitud"),
+            "ticket_num": t.get("Ticket Allianz"),
+            "tiene_asesor": bool(ases),
+            "url": t.get("_url"),
+        })
+    sin_asesor = sum(1 for x in tramites if not x["tiene_asesor"])
+    return {
+        "total": len(tramites),
+        "sin_asesor_tambien": sin_asesor,
+        "tramites": tramites,
+    }
+
+
 @router.post("/asesor")
 def asesor(body: BuscarEmailIn, x_tomi_key: Optional[str] = Header(default=None)):
     _auth(x_tomi_key)
