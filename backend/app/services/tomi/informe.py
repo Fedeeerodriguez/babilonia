@@ -409,6 +409,22 @@ def renderizar(resultado: Dict[str, Any]) -> str:
             )
         lines.append("")
 
+    # Catálogo de productos (lista REAL de lo que se ofrece — para no inventar)
+    prods = resultado.get("productos") or []
+    if prods:
+        lines.append(f"## Catálogo de productos ({len(prods)})")
+        lines.append("Esta es la lista COMPLETA y REAL de lo que se ofrece. "
+                     "Si el usuario pregunta por algo que NO está acá, NO existe — decilo claramente.")
+        for i, p in enumerate(prods, 1):
+            desc = _safe(p.get("descripcion"))
+            desc = (desc[:140] + "…") if len(desc) > 140 else desc
+            lines.append(
+                f"{i}. **{_safe(p.get('nombre'))}** — "
+                f"Tipo: `{_safe(p.get('tipo'))}`"
+                + (f" — {desc}" if desc and desc != "—" else "")
+            )
+        lines.append("")
+
     # No encontrados
     ne = resultado.get("no_encontrados") or {}
     if ne.get("emails") or ne.get("polizas"):
