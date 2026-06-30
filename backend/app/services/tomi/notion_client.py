@@ -537,6 +537,53 @@ def tickets_allianz_sin_cliente(page_size: int = 100, max_pages: int = 30) -> Li
     return out
 
 
+def listar_clientes_general(page_size: int = 100, max_pages: int = 80) -> List[Dict[str, Any]]:
+    """Todos los clientes de Clientes General (id, nombre, correo). Paginado, sin caché.
+    Sirve para indexar y sugerir el cliente probable de un trámite huérfano."""
+    if not DB_CLIENTES:
+        return []
+    out: List[Dict[str, Any]] = []
+    cursor: Optional[str] = None
+    for _ in range(max_pages):
+        kwargs: Dict[str, Any] = {"database_id": DB_CLIENTES, "page_size": page_size}
+        if cursor:
+            kwargs["start_cursor"] = cursor
+        try:
+            resp = _retry_429(_client().databases.query, **kwargs)
+        except APIResponseError as e:
+            log.error("listar_clientes_general falló: %s", e)
+            break
+        for p in resp.get("results", []):
+            fp = _flatten_props(p)
+            out.append({
+                "id": fp.get("_id"),
+                "nombre": fp.get("Nombre del Cliente"),
+                "correo": fp.get("Correo"),
+                "url": fp.get("_url"),
+            })
+        if not resp.get("has_more"):
+            break
+        cursor = resp.get("next_cursor")
+    return out
+
+
+def vincular_ticket_a_cliente(ticket_id: str, cliente_id: str) -> bool:
+    """Setea la relación 'Clientes General' de un ticket Allianz al cliente dado.
+    Es una ESCRITURA en Notion (la confirma un admin desde la plataforma)."""
+    if not ticket_id or not cliente_id:
+        return False
+    try:
+        _retry_429(
+            _client().pages.update,
+            page_id=ticket_id,
+            properties={"Clientes General": {"relation": [{"id": cliente_id}]}},
+        )
+        return True
+    except APIResponseError as e:
+        log.error("vincular_ticket_a_cliente falló (ticket=%s cliente=%s): %s", ticket_id, cliente_id, e)
+        return False
+
+
 def buscar_calendly_batch(
     clientes: Optional[List[str]] = None,
     asesor_ids: Optional[List[str]] = None,

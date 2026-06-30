@@ -5,7 +5,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import Base, engine
-from app.routers import auth, users, dashboard, metrics, conversations, documents, agent, tomi, analytics, feedback, health
+from app.routers import auth, users, dashboard, metrics, conversations, documents, agent, tomi, analytics, feedback, health, higiene
 
 load_dotenv(override=True)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -39,7 +39,7 @@ app.add_middleware(
 from app.services.tomi.ratelimit import RateLimitMiddleware
 app.add_middleware(RateLimitMiddleware)
 
-for r in [auth, users, dashboard, metrics, conversations, documents, agent, tomi, analytics, feedback, health]:
+for r in [auth, users, dashboard, metrics, conversations, documents, agent, tomi, analytics, feedback, health, higiene]:
     app.include_router(r.router)
 
 
