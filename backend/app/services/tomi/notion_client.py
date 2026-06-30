@@ -509,6 +509,34 @@ def buscar_tickets_allianz_batch(
     return _query(DB_TICKETS_ALLIANZ, f, page_size=page_size)
 
 
+def tickets_allianz_sin_cliente(page_size: int = 100, max_pages: int = 30) -> List[Dict[str, Any]]:
+    """Trámites en Tickets Allianz SIN cliente vinculado (relación 'Clientes General' vacía).
+
+    Son los trámites huérfanos que hacen que Tomi 'no encuentre' pendientes que sí
+    existen. Filtra server-side (is_empty) y pagina hasta agotar. NO usa caché:
+    queremos el conteo fresco para medir el avance del equipo al vincularlos.
+    """
+    if not DB_TICKETS_ALLIANZ:
+        return []
+    out: List[Dict[str, Any]] = []
+    cursor: Optional[str] = None
+    filt = {"property": "Clientes General", "relation": {"is_empty": True}}
+    for _ in range(max_pages):
+        kwargs: Dict[str, Any] = {"database_id": DB_TICKETS_ALLIANZ, "page_size": page_size, "filter": filt}
+        if cursor:
+            kwargs["start_cursor"] = cursor
+        try:
+            resp = _retry_429(_client().databases.query, **kwargs)
+        except APIResponseError as e:
+            log.error("tickets_allianz_sin_cliente falló: %s", e)
+            break
+        out.extend(_flatten_props(p) for p in resp.get("results", []))
+        if not resp.get("has_more"):
+            break
+        cursor = resp.get("next_cursor")
+    return out
+
+
 def buscar_calendly_batch(
     clientes: Optional[List[str]] = None,
     asesor_ids: Optional[List[str]] = None,
