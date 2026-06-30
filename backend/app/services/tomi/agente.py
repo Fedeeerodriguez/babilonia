@@ -110,6 +110,12 @@ Si el cliente no tiene "Número de Referencia" cargado, decilo — no devuelvas 
 - `eventos` → Datos básicos + eventos Calendly.
    USAR para: "agenda de X", "próxima cita", "eventos del asesor Z".
 
+PRODUCTOS — ¿qué se ofrece? / ¿existe este producto?:
+Si el usuario pregunta qué seguros/productos/cursos se ofrecen, o si EXISTE un producto
+puntual (ej. "¿venden seguro de mascotas?"), incluí `productos` (o se agrega solo por intent).
+Python trae el CATÁLOGO REAL completo. La regla es: si el producto pedido NO está en ese
+catálogo, NO existe — el informe lo aclara. Nunca confirmes un producto que no esté en la lista.
+
 DAF (cuenta de agente Allianz):
 Si preguntan por el "DAF", "número de agente", "cédula", "estado del DAF",
 "cuenta/credencial de agente" de un asesor, pasá el nombre del asesor en `asesores`
@@ -205,7 +211,8 @@ def _tools_schema() -> List[Dict[str, Any]]:
                             "type": "array",
                             "items": {"type": "string", "enum": [
                                 "usuarios", "emisiones", "cobranzas", "tickets_allianz",
-                                "calendly", "clientes_por_nombre", "asesores_por_nombre", "daf"
+                                "calendly", "clientes_por_nombre", "asesores_por_nombre", "daf",
+                                "productos"
                             ]},
                             "description": "Override granular. Normalmente usar `modo` en su lugar.",
                         },

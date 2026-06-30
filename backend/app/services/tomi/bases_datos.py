@@ -44,6 +44,15 @@ KEYWORDS_CALENDLY = ("turno", "agenda", "agendar", "reunión", "reunion", "cita"
 KEYWORDS_COBRANZA = ("cobranza", "pago", "saldo", "cuota", "vencimiento", "pagar", "debo")
 KEYWORDS_DAF = ("daf", "número de agente", "numero de agente", "clave de agente",
                 "cédula", "cedula", "cuenta de agente", "credencial", "estado del daf")
+# Intención "¿qué ofrecen / existe este producto?" → traer el catálogo real para
+# que Tommy NO invente productos (ej. "seguro de mascotas" que no existe).
+KEYWORDS_PRODUCTOS = (
+    "venden", "vende", "ofrecen", "ofrece", "ofrecés", "ofreces", "manejan", "maneja",
+    "qué seguros", "que seguros", "qué productos", "que productos", "qué cursos",
+    "que cursos", "producto", "productos", "catálogo", "catalogo", "cobertura",
+    "cubren", "cubre", "existe el seguro", "hay seguro", "tienen seguro",
+    "seguro de mascota", "seguro de viaje", "seguro para",
+)
 
 
 def _extraer(mensaje: str) -> Tuple[List[str], List[str], List[str], List[str]]:
@@ -61,14 +70,32 @@ def _extraer(mensaje: str) -> Tuple[List[str], List[str], List[str], List[str]]:
 
 def _detectar_intents(mensaje: str) -> Dict[str, bool]:
     if not mensaje:
-        return {"tickets": False, "calendly": False, "cobranza": False, "daf": False}
+        return {"tickets": False, "calendly": False, "cobranza": False, "daf": False,
+                "productos": False}
     m = mensaje.lower()
     return {
         "tickets": any(k in m for k in KEYWORDS_TICKETS),
         "calendly": any(k in m for k in KEYWORDS_CALENDLY),
         "cobranza": any(k in m for k in KEYWORDS_COBRANZA),
         "daf": any(k in m for k in KEYWORDS_DAF),
+        "productos": any(k in m for k in KEYWORDS_PRODUCTOS),
     }
+
+
+def _productos_resumen(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Mapea filas crudas del catálogo Notion a campos limpios para el informe."""
+    out: List[Dict[str, Any]] = []
+    for p in rows:
+        nombre = p.get("Nombre")
+        if not nombre:
+            continue
+        out.append({
+            "nombre": nombre,
+            "tipo": p.get("Tipo de producto"),
+            "descripcion": p.get("Descripción") or p.get("Descripcion"),
+            "id_allianz": p.get("ID Allianz"),
+        })
+    return out
 
 
 MODOS_VALIDOS = ("perfil", "polizas", "clientes", "cobranzas", "eventos", "completo", "cartera")
@@ -374,6 +401,11 @@ def consultar(
     if intents["daf"] and (asesores_uniq or emails_uniq):
         incluir_set.add("daf")
 
+    # Catálogo de productos: si preguntan qué se ofrece o si un producto existe.
+    # No requiere email — sirve también a prospectos (es info pública).
+    if intents["productos"]:
+        incluir_set.add("productos")
+
     # 2. Primera ola de queries (sin dependencias)
     tasks: Dict[str, Any] = {}
     queries_count = 0
@@ -397,6 +429,8 @@ def consultar(
             submit(ex, "clientes_por_nombre", nc.buscar_clientes_por_nombre_batch, clientes_uniq)
         if "asesores_por_nombre" in incluir_set and asesores_uniq:
             submit(ex, "asesores_por_nombre", nc.buscar_asesores_por_nombre_batch, asesores_uniq)
+        if "productos" in incluir_set:
+            submit(ex, "productos", nc.buscar_productos, limit=100)
 
         results: Dict[str, Any] = {}
         for name, fut in tasks.items():
@@ -697,6 +731,7 @@ def consultar(
         "calendly": results.get("calendly", []) or [],
         "clientes_por_nombre": results.get("clientes_por_nombre", []) or [],
         "asesores_por_nombre": results.get("asesores_por_nombre", []) or [],
+        "productos": _productos_resumen(results.get("productos", []) or []),
         "no_encontrados": {
             "emails": no_emails,
             "polizas": no_polizas,
