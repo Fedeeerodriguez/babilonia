@@ -4,6 +4,10 @@ import api from '../utils/api'
 import { useAuth } from '../context/AuthContext'
 
 const TAGS = ['tono', 'dato_incorrecto', 'incompleta', 'no_entendio', 'fuera_de_tema', 'formato', 'confunde_publico']
+// Categorías válidas del bot (backend/app/services/tomi/memorias.py CATEGORIAS_VALIDAS).
+// Al promover hay que elegir una; si no, el chunk queda con source='wati' y el bot
+// solo lo encuentra por búsqueda amplia (no por categoría).
+const CATEGORIAS = ['educacion', 'plu3', 'patrimonial', 'proteccion', 'auto']
 const STATUS_FILTERS = [
   { key: '', label: 'Todas' },
   { key: 'pending', label: 'Pendientes' },
@@ -36,6 +40,7 @@ function FeedbackCard({ fb, onChanged, isAdmin }) {
   const [corregida, setCorregida] = useState(fb.respuesta_corregida || '')
   const [tags, setTags] = useState(fb.tags || [])
   const [publico, setPublico] = useState(fb.publico || '')
+  const [promoteSource, setPromoteSource] = useState('educacion')
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
 
@@ -58,7 +63,7 @@ function FeedbackCard({ fb, onChanged, isAdmin }) {
   const promote = async () => {
     setBusy(true); setMsg('')
     try {
-      await api.post(`/api/feedback/${fb.id}/promote`)
+      await api.post(`/api/feedback/${fb.id}/promote`, null, { params: { source: promoteSource } })
       onChanged()
     } catch (e) { setMsg(e.response?.data?.detail || 'Error') }
     finally { setBusy(false) }
@@ -150,9 +155,19 @@ function FeedbackCard({ fb, onChanged, isAdmin }) {
           <ThumbsDown size={14} /> Mal
         </button>
         {isAdmin && fb.status !== 'promoted' && (
-          <button disabled={busy} onClick={promote} className="btn-primary flex items-center gap-1.5 ml-auto">
-            <Sparkles size={14} /> Enseñarle a Tomi
-          </button>
+          <div className="flex items-center gap-2 ml-auto">
+            <select
+              value={promoteSource}
+              onChange={(e) => setPromoteSource(e.target.value)}
+              title="Categoría del vector store donde se guarda"
+              className="input py-1.5 text-[12px] w-auto"
+            >
+              {CATEGORIAS.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <button disabled={busy} onClick={promote} className="btn-primary flex items-center gap-1.5">
+              <Sparkles size={14} /> Enseñarle a Tomi
+            </button>
+          </div>
         )}
         {fb.status === 'promoted' && (
           <span className="ml-auto flex items-center gap-1.5 text-emerald-600 text-[13px] font-medium">

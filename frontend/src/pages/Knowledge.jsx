@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react'
 import { Upload, FileText, Plus } from 'lucide-react'
 import api from '../utils/api'
 
-const SOURCES = ['plu3', 'patrimonial', 'educacion', 'plu', 'plu4']
+// Deben coincidir con CATEGORIAS_VALIDAS del bot (backend/app/services/tomi/memorias.py).
+// Si se sube con un source fuera de esta lista, el bot solo lo encuentra por búsqueda amplia.
+const SOURCES = ['plu3', 'patrimonial', 'proteccion', 'auto', 'educacion']
 
 export default function Knowledge() {
   const [docs, setDocs] = useState([])

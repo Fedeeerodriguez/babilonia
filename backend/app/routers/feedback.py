@@ -36,14 +36,22 @@ def _auth_internal(x_tomi_key: Optional[str]) -> None:
         raise HTTPException(status_code=401, detail="invalid key")
 
 
-@router.post("/log", response_model=schemas.FeedbackOut)
+@router.post("/log")
 def log_interaction(
     body: schemas.FeedbackLogIn,
     db: Session = Depends(get_db),
     x_tomi_key: Optional[str] = Header(default=None),
 ):
-    """Registra una interacción de Tomi como pendiente de revisión."""
+    """Registra una interacción de Tomi como pendiente de revisión.
+
+    NO registra interacciones sin respuesta real de Tomi (mensajes salientes/template,
+    o respuestas vacías cuando el agente decide no contestar a un emoji/ok): ensucian el
+    sandbox y aparecen como 'bad' falsos. Devuelve 200 con {skipped:true} para que n8n
+    no lo trate como error.
+    """
     _auth_internal(x_tomi_key)
+    if not (body.respuesta_tomi or "").strip() or not (body.pregunta or "").strip():
+        return {"skipped": True, "reason": "sin respuesta_tomi o pregunta — no se registra"}
     fb = models.SandboxFeedback(
         pregunta=body.pregunta,
         respuesta_tomi=body.respuesta_tomi,
@@ -56,7 +64,7 @@ def log_interaction(
     db.add(fb)
     db.commit()
     db.refresh(fb)
-    return fb
+    return schemas.FeedbackOut.model_validate(fb)
 
 
 @router.get("", response_model=List[schemas.FeedbackOut])
