@@ -1,0 +1,1550 @@
+{
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        -2912,
+        4160
+      ],
+      "id": "54ff5a59-20dd-4c73-b6d4-c6d087ae5108",
+      "name": "No Operation, do nothing2"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://plataforma-babilonia-babilonia.qfsutf.easypanel.host/api/tomi/clasificar-usuario",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Tomi-Key",
+              "value": "k7m9x2vp4n8q3rt6w1zy5fhj0bgds8ec"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "user_id",
+              "value": "={{ $('Edit Fields1').first().json.message.chat.id }}"
+            },
+            {
+              "name": "user_nombre",
+              "value": "={{ $('Edit Fields1').first().json.message.from.first_name }}"
+            },
+            {
+              "name": "mensaje_usuario",
+              "value": "={{ Array.isArray($('Redis9').item.json.mensajes) ? $('Redis9').item.json.mensajes.join(' ') : $('Redis9').item.json.mensajes }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2400,
+        3968
+      ],
+      "id": "3d8a5fb5-cd8a-478f-9528-8fea40810fa2",
+      "name": "Clasificar (Python)",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.comando_1 }}",
+                    "rightValue": "registrado",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "e6e657a1-7083-42b9-91cb-d08fcef7fa12"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "registrado"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "791f1edb-3c64-4e4f-9c83-a500fae1e33c",
+                    "leftValue": "={{ $json.comando_1 }}",
+                    "rightValue": "registrado",
+                    "operator": {
+                      "type": "string",
+                      "operation": "notEquals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "no registrado"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -1552,
+        3968
+      ],
+      "id": "bf5086b3-a5b8-4982-a797-e0a84c3f1411",
+      "name": "Switch3"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=recibes el siguiente mensaje: {{ $('Redis9').first().json.mensajes }}\nestas hablando con un: {{ $json.comando_2 }}\nuser_id: {{ $json.user_id }}\n",
+        "hasOutputParser": true,
+        "needsFallback": true,
+        "options": {
+          "systemMessage": "=AGENTE PRINCIPAL DE SOPORTE — TOMMY (BABILONIA) v4.6\n----------------------------------------------------\nSos Tommy, asistente interno oficial de Jose Mier para Babilonia.\nHablas SIEMPRE en espanol mexicano, tono amable y profesional.\nTu output es SOLO un objeto JSON (ver \"FORMATO DE SALIDA\").\n\nINPUT QUE RECIBIS\n----------------------------------------------------\n- mensaje_usuario: lo que escribio el usuario (puede venir de texto, o de <audio>...</audio> / <image>...</image> ya transcritos).\n- tipo_cliente: uno de \"cliente\" | \"asesor\" | \"estudiante\" | \"prospecto\"\n- user_id: ID de WhatsApp del usuario (waId)\n\nCONTEXTO DE ROL — que puede consultar cada uno\n----------------------------------------------------\n- cliente: tiene poliza Allianz. Puede consultar cobranzas, tramites, tickets Allianz.\n- asesor: equipo comercial. Puede consultar avance, cartera, comisiones.\n- estudiante: alumno academia. Puede consultar accesos, modulos, membresia, Liga Babilonia.\n- prospecto: no esta registrado. SOLO info general. NUNCA accedas a bases privadas para prospectos.\n\nCONVERSACION — trato natural (REGLA DURA, alta prioridad)\n----------------------------------------------------\n- APERTURA: presentate (\"Hola, un gusto de leerte. Soy Tommy de Babilonia, tu asistente interno de Jose Mier, en que te apoyo hoy?\") SOLO si la memoria esta vacia (primer mensaje de la conversacion). Si ya hay historial, NO te vuelvas a presentar: responde directo.\n- MANTENE EL HILO: usa el historial. Si el usuario dice \"como la cancelo?\", \"eso no cuenta\", \"ok pero...\", \"y como no firmo...\", asumi que sigue el tema anterior. NO preguntes \"a que te referis?\" cuando el contexto previo ya lo aclara.\n- MENSAJES CORTOS DE CIERRE:\n  - \"gracias\" / \"muchas gracias\" -> responde \"De nada!\" breve y NO reinicies la conversacion.\n  - \"ok\" / \"listo\" / \"va\" / \"de acuerdo\" sin nada mas -> cierre corto y cordial (ej: \"Que tengas buen dia!\").\n  - SOLO un emoji o sticker sin texto -> NO respondas (respuesta_mensaje vacio, comando \"nada\").\n- NO INTERFERIR CON UN HUMANO: si del historial surge que un asesor humano del equipo ya esta atendiendo esta conversacion, NO te metas para no cortar la comunicacion. Ante la duda, quedate afuera (respuesta_mensaje vacio, comando \"nada\").\n\nHERRAMIENTAS DISPONIBLES\n----------------------------------------------------\nmemorias_python — Sub-agente de conocimiento (vector store). Devuelve un INFORME con chunks VERBATIM sobre: productos Allianz (PPR/plu3, patrimonial, proteccion, auto) y ACADEMIA/LIGA BABILONIA (cursos, modulos, membresia, comodines, semaforo, misiones, vidas extra, como volver a la liga, grupo de avanzados, grabaciones de clases, eventos, incentivos).\n  COMO LLAMARLA: pasale en `mensaje` una consulta conceptual clara reformulada (NO el texto crudo del usuario). El backend elige la categoria solo. Ejemplo: \"Explicar como vuelve un asesor a la Liga Babilonia y las vias disponibles\".\n  Usar SOLO para conceptos de producto o de academia/Liga. NO usar para saludos, agradecimientos ni datos personales.\n\nbases_datos_python — Sub-agente deterministico que accede a TODAS las bases privadas de Babilonia en Notion (clientes, asesores, estudiantes, emisiones, cobranzas, tickets Allianz, eventos Calendly, DAF de agentes, y el CATALOGO DE PRODUCTOS) y devuelve un INFORME en markdown con datos VERBATIM (sin alucinacion, 100% fiel a Notion).\n\n  COMO LLAMARLA — formato del parametro `mensaje`:\n    NO le pases el texto del usuario tal cual. Vos formulas una consulta DETALLADA con todo el contexto que tengas. Patron:\n      \"[Accion] + [identificadores] + [que devolver]\"\n    Ejemplos correctos:\n    - \"Listar todas las polizas (emisiones) del cliente con correo juan@x.com. Incluir poliza, prima, estado y fecha.\"\n    - \"Verificar cobranza de la poliza PLU3-411038: cuando fue el ultimo cobro, hay deuda, cual es el proximo cobro?\"\n    - \"Buscar la asesora con correo arycasbrust@gmail.com. Devolver total de clientes, total de emisiones y total de eventos Calendly.\"\n    - \"Listar tickets Allianz del cliente con correo karla98mauricio@gmail.com.\"\n    - \"Cual es el numero de agente / DAF de la asesora Zulema Romero?\"\n    - \"Que productos/seguros/cursos se ofrecen? Listar el catalogo. (o: verificar si existe el 'seguro de mascotas')\"\n\n  DATOS OBLIGATORIOS segun consulta:\n    - Cobranzas/Saldos: NUMERO DE POLIZA (obligatorio, sin alternativa)\n    - Numero de cliente: es el campo \"Numero de Referencia\" de Cobranza.\n    - Tickets Allianz: nombre del tramite (no del cliente)\n    - DAF/numero de agente/cedula: nombre o correo del asesor\n    - Catalogo de productos: NO requiere ningun dato (es info publica, sirve tambien a prospectos)\n    - Todo lo demas (info personal, cartera, eventos): CORREO ELECTRONICO\n\n  Si te falta el dato obligatorio, PEDISELO al usuario PRIMERO. NO llames a la tool sin contexto suficiente. EXCEPCION: si el tema igual va a terminar en ticket humano (ver ESCALAMIENTO), no hagas loop de preguntas: escala directo.\n\n  COMO LEER LA RESPUESTA de bases_datos_python:\n  La respuesta es un objeto JSON con varios campos. Tu prioridad es el campo `informe` (markdown con TODOS los datos verbatim de Notion). Leelo y extrae los valores que necesitas.\n  Estructura del informe: ## Usuarios encontrados / ## Emisiones / ## Cobranzas / ## DAF — Cuentas de agente / ## Tickets Allianz / ## Eventos Calendly / ## Catalogo de productos / ## No encontrado.\n  IMPORTANTE: NO leas el campo `datos` (JSON crudo). Lee SOLO `informe`.\n  Si el informe dice \"Sin resultados\" o \"No encontrado\", interpreta que no hay datos y avisale al usuario.\n  NUNCA usar las bases PRIVADAS con prospectos (el catalogo de productos SI esta permitido para prospectos). NUNCA inventes datos que no esten en el informe.\n\nthink — Solo para casos ambiguos donde necesites verificar tu razonamiento. NO uses think para respuestas simples.\n\nARBOL DE DECISION\n----------------------------------------------------\n1. Saludo / agradecimiento / charla casual / mensaje corto de cierre? -> Responde natural y breve (ver CONVERSACION). comando: \"nada\". NO uses tools.\n2. Cambios administrativos Allianz (cambio de beneficiario, etc.)? -> Entrega la Guia: https://drive.google.com/uc?export=download&id=1aI4lj30pMR1YqF7_PZgLXPKo4rpYB03w . comando: \"nada\".\n3. Pregunta sobre PRODUCTOS o ACADEMIA/LIGA BABILONIA:\n   a) \"Que ES X / como funciona X\" o dudas de la Liga (comodines, semaforo, misiones, vidas extra, como vuelvo, grupo de avanzados, grabaciones, eventos) -> memorias_python con una consulta conceptual clara. comando: \"nada\".\n   b) \"Venden X / ofrecen X / existe X / que seguros-productos-cursos manejan\" (existencia o listado) -> bases_datos_python (te devuelve el CATALOGO REAL). Si lo pedido NO esta en el catalogo, NO existe: decilo claro. comando: \"nada\".\n4. Pregunta personal (saldo, tramite, cita, cartera, acceso, DAF)? -> Verifica el dato obligatorio (correo o poliza). Si falta y podes resolver vos, pediselo. Si lo tenes, formula consulta EXPLICITA y llama a bases_datos_python. Si el informe trae la info -> responde citando datos exactos. comando: \"nada\". Si el informe dice \"no encontrado\" Y requiere accion humana -> escala con ticket.\n5. Prospecto pidiendo precios? -> \"No compartimos precios por chat. Te dejo este video con info general: [link]\". comando: \"nada\".\n6. TEMAS QUE VAN DIRECTO A TICKET (sin loop de preguntas) -> ver ESCALAMIENTO.\n\nENLACES UTILES\n----------------------------------------------------\n- Enlace de acompañamiento (para conectar a un asesor con acompañamiento): https://calendly.com/asesores-atomicos/acompanamiento\n  (NO uses el link de agenda personal de Jose para esto.)\n\nESCALAMIENTO POR TICKET\n----------------------------------------------------\nEscala con ticket (SIN interrogar pidiendo datos) cuando el tema requiere una persona. Elegi el comando y aclara al inicio del ticket quien debe atenderlo:\n\n  comando \"allianz\" (Tickets Allianz):\n   - [Ceci]: captura y emision de productos, post venta, link de firma de contrato, biometricos, dudas de contrato de productos.\n   - [Yans]: cobranza, asesores en proceso de cedulacion.\n\n  comando \"general\" (Tickets Babilonia):\n   - [Anayanci]: dudas del curso, Xperiencify, Discord.\n   - [Yans]: problemas con grabaciones de clases.\n   - [Jime]: coordinacion, escalamiento al equipo directivo, y temas especiales de la Liga Babilonia (comodines, semaforo, cierres/citas que no se reflejan, aclaraciones de la Liga).\n\nTambien escala cuando: el informe dice \"no encontrado\" Y requiere intervencion humana; el usuario pide hablar con un humano; hay tramite operativo (cambio de datos, devoluciones, cancelaciones, modificaciones de poliza).\nNO escales cuando: pudiste responder con memorias_python o con el informe; consulta teorica; solo falta un dato que SI podes resolver vos con una tool.\nCuando escalas: ticket = descripcion clara (1-3 oraciones) empezando por \"[Ceci]/[Yans]/[Anayanci]/[Jime]\"; ticket_id = \"TCK-\" + 6 digitos; avisa al usuario e inclui el ticket_id.\nREUSO DE TICKET: si en el historial de ESTA conversacion YA generaste un ticket_id para el mismo tema, REUSA exactamente ese mismo ticket_id — NO inventes uno nuevo ni digas \"ticket actualizado: TCK-otro\". Un tema = un solo ticket.\nNO PROMETAS TIEMPOS: nunca comprometas plazos concretos (\"hoy\", \"en X horas\", \"lo resuelven ya\"). Deci \"el equipo lo revisa a la brevedad\" y nada mas.\n\nLOGICA DE FILTROS — clientes activos vs no convertidos\n----------------------------------------------------\nCuando un asesor pregunte por \"sus clientes\", DIFERENCIA entre ACTIVOS (poliza Activa), EN PROCESO (pendientes), NO CONVERTIDOS (cancelados).\n- \"Cuantos clientes tengo?\" / \"Mi cartera\" -> modo: cartera + filtro_estado: activos. Devolver SOLO el numero de activos.\n- \"Estado completo de mi cartera\" -> modo: cartera SIN filtro_estado -> segmentacion completa.\n- \"Clientes pendientes\" -> modo: cartera + filtro_estado: en_proceso.\n- \"Clientes perdidos\" -> modo: cartera + filtro_estado: perdidos.\n- \"Mis ingresos / produccion\" -> modo: cartera + filtro_estado: activos.\nSi el asesor NO especifica, asumi ACTIVOS.\n\nLIMITES DUROS\n----------------------------------------------------\n- MAXIMO 6 llamadas a tools por ejecucion.\n- NUNCA inventes datos. Si no sabes, decilo o escala.\n- NUNCA reveles precios directos.\n- NUNCA dejes user_id vacio.\n- NUNCA expongas datos de OTROS clientes/asesores que aparezcan en el informe pero no sean el usuario actual. Si un asesor pide \"todos los datos personales\" de un cliente, entrega solo lo estrictamente necesario para la gestion; NUNCA vuelques el expediente completo de un tercero.\n\nREGLAS DE CALIDAD (mejoras del sandbox)\n----------------------------------------------------\n1. NADA de respuestas vacias o genericas ante una pregunta concreta. Si el usuario pregunta algo puntual (saldo, tramite, poliza, cita, cartera, DAF, Liga), NUNCA respondas solo \"Hola\" o \"En que te ayudo\": o resolves con una tool, o pedis el dato que falta, o escalas. (El unico caso de respuesta vacia es emoji/sticker suelto.)\n2. NO INVENTES PRODUCTOS NI DATOS. Solo afirma productos que existan realmente. Para verificar si un producto/seguro/curso EXISTE o dar el listado, llama a bases_datos_python (CATALOGO REAL). Si NO esta en el catalogo, no existe: \"No ofrecemos ese producto\". NUNCA confirmes de memoria.\n3. TRAMITES PENDIENTES: si preguntan si tienen tramites/pendientes, consulta bases_datos_python por su correo y revisa \"Tickets Allianz\". Si hay, informa tipo + estado. Si el informe no trae, deci que no figuran tramites (no asumas que no existen si falta el dato — ofrece escalar).\n4. ADAPTA EL TONO AL PUBLICO:\n   - cliente: claro, concreto, operativo. Dato puntual (fecha, monto, estado) + siguiente paso. Frases cortas.\n   - prospecto: calido y comercial. Genera interes e invita a avanzar. NUNCA des precios por chat.\n   - asesor: directo y de negocio. Numeros, cartera, comisiones, sin vueltas.\n   - estudiante: didactico y simple. Pasos y accesos, lenguaje facil.\n5. SI NO TENES LA INFO: no cortes con un \"no se\" seco. Ofrece una ALTERNATIVA CONCRETA: agendar con un asesor o escalar con ticket. Nunca un callejon sin salida.\n6. GRABACIONES DE CLASES: si preguntan por la grabacion de una clase, confirma que SI se sube, en un maximo de 48 hs, en la plataforma, donde la van a encontrar. (No respondas \"no tengo acceso\".)\n7. Antes de pedir un dato al usuario, preguntate: este tema lo resuelvo yo con una tool, o va a terminar en ticket humano igual? Si va a ticket, escala directo sin hacer esperar con preguntas.\n\nESQUEMA DE SALIDA — JSON ESTRICTO\n----------------------------------------------------\n{\n  \"comando\": \"nada\" | \"allianz\" | \"general\",\n  \"respuesta_mensaje\": \"Texto que se le envia al usuario.\",\n  \"nombre_cliente\": \"Nombre completo del cliente o \\\"\\\"\",\n  \"tipo_cliente\": \"cliente\" | \"asesor\" | \"estudiante\" | \"prospecto\",\n  \"numero_contacto\": \"telefono o \\\"\\\"\",\n  \"email\": \"correo o \\\"\\\"\",\n  \"ticket\": \"descripcion del ticket o \\\"\\\"\",\n  \"ticket_id\": \"TCK-XXXXXX o \\\"\\\"\",\n  \"user_id\": \"<el user_id que recibiste>\"\n}\n\nREGLAS DEL OUTPUT:\n- comando = \"nada\" -> ticket y ticket_id deben ser \"\".\n- comando = \"allianz\" o \"general\" -> ticket y ticket_id son OBLIGATORIOS.\n- Los demas campos: si no aplican, deja \"\" (string vacio). PROHIBIDO null.\n- tipo_cliente: copialo EXACTO del input.\n\nFORMATO — CRITICO\n----------------------------------------------------\n- Devolve SOLO el objeto JSON. NADA mas.\n- PROHIBIDO: bloques markdown (triple backtick json), texto antes/despues, campos extra.\n- El primer caracter de tu respuesta debe ser \"{\" y el ultimo \"}\".\n"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        -1040,
+        3792
+      ],
+      "id": "7e591660-6eab-4d98-81e1-dfda0b2e6224",
+      "name": "AGENTE SOPORTE TOMMY",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "claude-sonnet-4-6",
+          "mode": "list",
+          "cachedResultName": "Claude Sonnet 4.6"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [
+        -1328,
+        4016
+      ],
+      "id": "fc6edcd6-17f6-4362-8a35-6b27eeea1c70",
+      "name": "Anthropic Chat Model",
+      "credentials": {
+        "anthropicApi": {
+          "id": "BZuBugfL15PQziR5",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o",
+          "mode": "list",
+          "cachedResultName": "gpt-4o"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        -1200,
+        4016
+      ],
+      "id": "9e44656e-18dc-4605-ba3d-37bf13f51e05",
+      "name": "OpenAI Chat Model Fallback",
+      "credentials": {
+        "openAiApi": {
+          "id": "BXc2C7G8jc5ufqLC",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.toolThink",
+      "typeVersion": 1.1,
+      "position": [
+        -944,
+        4016
+      ],
+      "id": "bd10b4e3-13f6-4de6-96f8-7839a2212093",
+      "name": "Think"
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "=string({{ $('Edit Fields1').first().json.message.chat.id }})",
+        "tableName": "n8n_chat_histories_agent"
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
+      "typeVersion": 1.3,
+      "position": [
+        -1072,
+        4016
+      ],
+      "id": "882d8720-f94c-4f08-971b-487a78314b4f",
+      "name": "Postgres Chat Memory",
+      "credentials": {
+        "postgres": {
+          "id": "YkAn096wtNJS3fPB",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserAutofixing",
+      "typeVersion": 1,
+      "position": [
+        -560,
+        4016
+      ],
+      "id": "37e154ce-4e77-4bdb-88ab-5a16ddf5e667",
+      "name": "Auto-fixing Output Parser"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        -544,
+        4224
+      ],
+      "id": "38e7e92f-34dd-434c-80ec-cb8c9064f952",
+      "name": "Google Gemini Chat Model Fix",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "Rpc97ucnLF7irguL",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n  \"comando\": \"allianz\",\n  \"respuesta_mensaje\": \"Respuesta al usuario.\",\n  \"nombre_cliente\": \"Carlos Mendoza\",\n  \"tipo_cliente\": \"cliente\",\n  \"numero_contacto\": \"+525559876543\",\n  \"email\": \"carlos@email.com\",\n  \"ticket\": \"Consulta de cobranzas\",\n  \"ticket_id\": \"TCK-10293\",\n  \"user_id\": \"5495314115\"\n}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        -416,
+        4224
+      ],
+      "id": "d40a4bad-93ed-44d4-a452-f9057498e489",
+      "name": "Structured Output Parser"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.output.comando }}",
+                    "rightValue": "allianz",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    },
+                    "id": "8061c371-871a-4ecd-946f-318c5475c824"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "allianz"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "398b1e3b-1d02-4d2a-858c-ea1cef106a82",
+                    "leftValue": "={{ $json.output.comando }}",
+                    "rightValue": "general",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "general"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.3,
+      "position": [
+        -192,
+        3744
+      ],
+      "id": "c1c839f7-9468-4f83-bb9e-7ce849186685",
+      "name": "Switch Ticket"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dateTime",
+      "typeVersion": 2,
+      "position": [
+        32,
+        3648
+      ],
+      "id": "943a994f-d1f1-4263-bd3b-b01c503af878",
+      "name": "Date & Time Allianz"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dateTime",
+      "typeVersion": 2,
+      "position": [
+        32,
+        3840
+      ],
+      "id": "978a0c24-a401-4ea3-8ce1-3ee48abec086",
+      "name": "Date & Time General"
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "databaseId": {
+          "__rl": true,
+          "value": "235e7979-cda4-8078-9032-e74cbd1e0764",
+          "mode": "list",
+          "cachedResultName": "Tickets Internos Allianz",
+          "cachedResultUrl": "https://www.notion.so/235e7979cda480789032e74cbd1e0764"
+        },
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Correo electronico|email",
+              "emailValue": "={{ $('AGENTE SOPORTE TOMMY').item.json.output.email }}"
+            },
+            {
+              "key": "Nombre Completo|title",
+              "title": "={{ $('AGENTE SOPORTE TOMMY').item.json.output.nombre_cliente }}"
+            },
+            {
+              "key": "descripcion de caso|rich_text",
+              "textContent": "={{ $('AGENTE SOPORTE TOMMY').item.json.output.ticket }}"
+            },
+            {
+              "key": "Fecha|date",
+              "date": "={{ $now }}",
+              "timezone": "America/Mexico_City"
+            },
+            {
+              "key": "numero de contacto|phone_number",
+              "phoneValue": "={{ $('AGENTE SOPORTE TOMMY').item.json.output.numero_contacto }}"
+            },
+            {
+              "key": "Ticket ID|rich_text",
+              "textContent": "={{ $('AGENTE SOPORTE TOMMY').item.json.output.ticket_id || ('TCK-' + $now.toMillis().toString().slice(-6)) }}"
+            },
+            {
+              "key": "Estado|status",
+              "statusValue": "Sin empezar"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        256,
+        3648
+      ],
+      "id": "0db9e88e-a918-4d81-b136-9e30b64fd7b6",
+      "name": "TICKET ALLIANZ",
+      "credentials": {
+        "notionApi": {
+          "id": "DQmu5Qgy7KIAFLzs",
+          "name": "Notion account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "databaseId": {
+          "__rl": true,
+          "value": "c50bc5a6-7c64-499a-af9d-0e3b024c4e96",
+          "mode": "list",
+          "cachedResultName": "Tickets Babilonia",
+          "cachedResultUrl": "https://www.notion.so/c50bc5a67c64499aaf9d0e3b024c4e96"
+        },
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Correo electronico|email",
+              "emailValue": "={{ $('AGENTE SOPORTE TOMMY').item.json.output.email }}"
+            },
+            {
+              "key": "Descripcion|rich_text",
+              "textContent": "={{ $('AGENTE SOPORTE TOMMY').item.json.output.ticket }}"
+            },
+            {
+              "key": "Fecha Limite|date",
+              "date": "={{ $now }}",
+              "timezone": "America/Mexico_City"
+            },
+            {
+              "key": "TELEFONO|phone_number",
+              "phoneValue": "={{ $('AGENTE SOPORTE TOMMY').item.json.output.numero_contacto }}"
+            },
+            {
+              "key": "TICKET ID|rich_text",
+              "textContent": "={{ $('AGENTE SOPORTE TOMMY').item.json.output.ticket_id || ('TCK-' + $now.toMillis().toString().slice(-6)) }}"
+            },
+            {
+              "key": "Estado|status",
+              "statusValue": "Por hacer"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        256,
+        3840
+      ],
+      "id": "c9601065-f1b1-4dc5-8d21-23c2b989a905",
+      "name": "ticket general",
+      "credentials": {
+        "notionApi": {
+          "id": "DQmu5Qgy7KIAFLzs",
+          "name": "Notion account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "push",
+        "list": "=string({{ $json.message.chat.id }})",
+        "messageData": "={{ $json.message.text }}",
+        "tail": true
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        -3808,
+        4064
+      ],
+      "id": "61b6f516-b6d5-4e02-ae5f-d44dedb3908a",
+      "name": "Redis",
+      "credentials": {
+        "redis": {
+          "id": "0NgnVpBhiwXz1FI3",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 40
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -3584,
+        4064
+      ],
+      "id": "91f11c18-31e8-41f0-850f-c30bb45bd4d8",
+      "name": "Wait",
+      "webhookId": "a0b486e4-4697-4f74-8127-7045fe873878"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "propertyName": "mensajes",
+        "key": "=string({{ $('Edit Fields1').first().json.message.chat.id }})",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        -3360,
+        4064
+      ],
+      "id": "b1e8c45e-8237-41e0-b358-df09690be578",
+      "name": "Redis9",
+      "credentials": {
+        "redis": {
+          "id": "0NgnVpBhiwXz1FI3",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "5b5c58fe-5b05-4b47-a88f-98e6f2af038d",
+              "leftValue": "={{ $('Edit Fields1').first().json.message.text }}",
+              "rightValue": "={{ $json.mensajes.last() }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -3136,
+        4064
+      ],
+      "id": "6f038d78-104e-4537-8f0c-6bde7931fd5c",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "operation": "delete",
+        "key": "=string({{ $('Edit Fields1').first().json.message.chat.id }})"
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        -2912,
+        3968
+      ],
+      "id": "5d26108b-cd3f-42ca-a641-c6c5f4fa9705",
+      "name": "Redis10",
+      "credentials": {
+        "redis": {
+          "id": "0NgnVpBhiwXz1FI3",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const m = $('Redis9').first().json.mensajes;\nconst txt = Array.isArray(m) ? m.join(' ') : (m ?? '');\n// Quita emojis, simbolos, espacios y restos de formato; si no queda texto real, corta.\nconst limpio = String(txt).replace(/[\\p{Extended_Pictographic}\\u200d\\uFE0F\\u2600-\\u27BF\\s\\[\\]\"']/gu, '').trim();\nif (!limpio) return [];   // solo emoji / vacio -> no se procesa ni se responde\nreturn $input.all();"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2656,
+        3968
+      ],
+      "id": "b0b9f5d5-3f0f-43f1-a42d-e1b6ccdaf6f6",
+      "name": "Filtrar emoji/vacio"
+    },
+    {
+      "parameters": {
+        "toolDescription": "Sub-agente de bases de datos Notion. Usalo SIEMPRE que el usuario pregunte por informacion de asesores, clientes, polizas (PLU3-XXX), cobranzas, numero de cliente (Numero de Referencia), DAF/numero de agente, tickets Allianz o eventos Calendly. Devuelve un INFORME en markdown con datos verbatim de Notion + JSON crudo. Pasale el mensaje completo del usuario y opcionalmente listas explicitas si las identificas.",
+        "method": "POST",
+        "url": "https://plataforma-babilonia-babilonia.qfsutf.easypanel.host/api/tomi/agente",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Tomi-Key",
+              "value": "k7m9x2vp4n8q3rt6w1zy5fhj0bgds8ec"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "mensaje",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters0_Value', `Consulta DETALLADA que queres que el sub-agente de bases de datos resuelva. Inclui TODO el contexto relevante: email del usuario, numeros de poliza (PLU3-XXX), nombres de clientes/asesores, y la accion concreta (buscar, listar, contar, verificar). NO pases el mensaje del usuario tal cual; reformulalo con el contexto. Si te falta un dato clave, pediselo al usuario primero.`, 'string') }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        -816,
+        4016
+      ],
+      "id": "1dc9afbd-c2bf-4b57-b529-f03655f4efdd",
+      "name": "bases_datos_python"
+    },
+    {
+      "parameters": {
+        "toolDescription": "Sub-agente de memorias tecnicas deterministico. Usalo cuando el usuario pregunte por informacion conceptual de productos Allianz (PPR/plu3, patrimonial, proteccion, auto) o de la academia/Liga Babilonia (cursos, modulos, membresia, comodines, semaforo, misiones, vidas extra, como volver a la liga, grupo de avanzados, grabaciones, eventos). Devuelve un INFORME en markdown con chunks VERBATIM del vector store Supabase (sin alucinacion). NO uses para datos personales — para eso usa bases_datos_python.",
+        "method": "POST",
+        "url": "https://plataforma-babilonia-babilonia.qfsutf.easypanel.host/api/tomi/memorias-agente",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Tomi-Key",
+              "value": "k7m9x2vp4n8q3rt6w1zy5fhj0bgds8ec"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "mensaje",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters0_Value', `Reformula el mensaje del usuario en una consulta concreta sobre el tema tecnico (productos Allianz o academia/Liga Babilonia). Ejemplo: Explicar que es el PPR de Allianz y como funcionan las aportaciones adicionales.`, 'string') }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        -688,
+        4016
+      ],
+      "id": "00b47d0b-5210-4336-9ade-2c4c2b283938",
+      "name": "memorias_python"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "tomi-responder",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -5376,
+        4160
+      ],
+      "id": "3771fec1-4af7-4b20-82c1-00e4a64eeea0",
+      "name": "Webhook",
+      "webhookId": "d75e62a2-d852-4a31-9ec8-531d27bd338c"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "w-cond-text",
+                    "leftValue": "={{ $json.body.type }}",
+                    "rightValue": "text",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Texto"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "w-cond-audio",
+                    "leftValue": "={{ $json.body.type }}",
+                    "rightValue": "audio",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Audio"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "w-cond-image",
+                    "leftValue": "={{ $json.body.type }}",
+                    "rightValue": "image",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Imagen"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "Otro"
+        }
+      },
+      "id": "08c7f1d1-3478-4464-96f8-8f8bd3398bba",
+      "name": "Switch Tipo (WATI)",
+      "type": "n8n-nodes-base.switch",
+      "position": [
+        -5152,
+        4128
+      ],
+      "typeVersion": 3.2
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "wt-text",
+              "name": "text",
+              "value": "={{ $json.body.text }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -4480,
+        3872
+      ],
+      "id": "68ba285d-dab5-44af-918d-db577d9ebe32",
+      "name": "Obtener Texto (WATI)"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Webhook').item.json.body.data }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer wati_85be6dfb-48c0-4435-95fc-db55728764fc.3gdpVSxWbihz7IDKiwTWoQJ5R5IkX2jIXN8JSDIiPJu0aEuXkItzxGFo0bOBz4d7VUbv3ExeuIAHsRr0Hi1lmyHvP7JT2ducsFLi6TmM7o4FEZCAd78Tyb96QlWJ1BGb"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "id": "a27a68f9-6968-4b05-b317-0b9d9ebb81e7",
+      "name": "Descargar Audio (WATI)",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        -4928,
+        4064
+      ],
+      "typeVersion": 4.2
+    },
+    {
+      "parameters": {
+        "resource": "audio",
+        "operation": "transcribe",
+        "options": {}
+      },
+      "id": "9c5b988d-f1b6-4934-923a-631939d253f5",
+      "name": "Transcribir Audio (WATI)",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "position": [
+        -4704,
+        4064
+      ],
+      "typeVersion": 1.5,
+      "credentials": {
+        "openAiApi": {
+          "id": "BXc2C7G8jc5ufqLC",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "wa-audio-wrap",
+              "name": "content",
+              "type": "string",
+              "value": "=<audio>\n  {{ $json.text }}\n</audio>"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "2765550f-162f-4114-aece-f1055ef1276c",
+      "name": "Obtener Mensaje Audio (WATI)",
+      "type": "n8n-nodes-base.set",
+      "position": [
+        -4480,
+        4064
+      ],
+      "typeVersion": 3.4
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.body.data }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer wati_85be6dfb-48c0-4435-95fc-db55728764fc.3gdpVSxWbihz7IDKiwTWoQJ5R5IkX2jIXN8JSDIiPJu0aEuXkItzxGFo0bOBz4d7VUbv3ExeuIAHsRr0Hi1lmyHvP7JT2ducsFLi6TmM7o4FEZCAd78Tyb96QlWJ1BGb"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "id": "dbe147b3-0cc0-4c29-ab1a-1e006b27c3a9",
+      "name": "Descargar Imagen (WATI)",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        -4928,
+        4256
+      ],
+      "typeVersion": 4.2
+    },
+    {
+      "parameters": {
+        "resource": "image",
+        "operation": "analyze",
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4O-MINI"
+        },
+        "text": "Describe la imagen en detalle. Si contiene texto, transcribilo. Si es relevante para un seguro o tramite (poliza, DNI, comprobante de pago, formulario, captura de chat), describi que es y extrae los datos clave.",
+        "inputType": "base64",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        -4704,
+        4256
+      ],
+      "id": "d039ad76-f020-4628-ae39-2145729eeea7",
+      "name": "Analyze Imagen (WATI)",
+      "credentials": {
+        "openAiApi": {
+          "id": "BXc2C7G8jc5ufqLC",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "wa-img-wrap",
+              "name": "content",
+              "value": "=<image>\n {{ $json.content }}\n</image>",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -4480,
+        4256
+      ],
+      "id": "bab4b042-9a3f-409a-ba5b-8accb6f5f59b",
+      "name": "Imagen a Texto (WATI)"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        -4928,
+        4448
+      ],
+      "id": "d3b75b25-086b-467c-a477-f52248e7c671",
+      "name": "Otro tipo (ignorar)"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nlet message = \"\";\nif (item.Content) message = item.Content;\nelse if (item.content) message = item.content;\nelse if (item.text) message = item.text;\nreturn [{ json: { message } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4256,
+        4064
+      ],
+      "id": "f2f8d05d-7caa-492f-81aa-16412ec2b348",
+      "name": "Normalizar mensaje"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c59126c0-94a5-4a4a-ad9d-e5c151b3b89f",
+              "name": "message.chat.id",
+              "value": "={{ $('Webhook').item.json.body.waId }}",
+              "type": "number"
+            },
+            {
+              "id": "a1ce361e-b11d-4f22-9f83-9d45beba3119",
+              "name": "message.from.first_name",
+              "value": "={{ $('Webhook').item.json.body.senderName }}",
+              "type": "string"
+            },
+            {
+              "id": "52730062-6c1d-4886-8275-6accd0096cba",
+              "name": "message.text",
+              "value": "={{ $json.message }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -4032,
+        4064
+      ],
+      "id": "1fb83157-738a-4086-b53a-82eab137ddd7",
+      "name": "Edit Fields1"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1",
+              "name": "pregunta",
+              "value": "={{ (() => { let m = $('Redis9').first().json.mensajes; if (Array.isArray(m)) return m.join(' '); if (typeof m === 'string') { try { const p = JSON.parse(m); return Array.isArray(p) ? p.join(' ') : m; } catch (e) { return m; } } return $('Edit Fields1').first().json.message.text || ''; })() }}",
+              "type": "string"
+            },
+            {
+              "id": "a2",
+              "name": "respuesta_tomi",
+              "value": "={{ $json.output.respuesta_mensaje }}",
+              "type": "string"
+            },
+            {
+              "id": "a3",
+              "name": "canal",
+              "value": "sandbox",
+              "type": "string"
+            },
+            {
+              "id": "a4",
+              "name": "source",
+              "value": "wati",
+              "type": "string"
+            },
+            {
+              "id": "a5",
+              "name": "user_email",
+              "value": "={{ $json.output.email }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "94cf5e20-e667-44c4-812c-d764fc441c28",
+      "name": "Armar payload",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -64,
+        4400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://plataforma-babilonia-babilonia.qfsutf.easypanel.host/api/feedback/log",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Tomi-Key",
+              "value": "=k7m9x2vp4n8q3rt6w1zy5fhj0bgds8ec"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "pregunta",
+              "value": "={{ $json.pregunta }}"
+            },
+            {
+              "name": "respuesta_tomi",
+              "value": "={{ $json.respuesta_tomi }}"
+            },
+            {
+              "name": "canal",
+              "value": "={{ $json.canal }}"
+            },
+            {
+              "name": "source",
+              "value": "={{ $json.source }}"
+            },
+            {
+              "name": "user_email",
+              "value": "={{ $json.user_email }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "5e8b71e4-43f7-4b4b-9dd5-67009bb1ef56",
+      "name": "Registrar feedback (Tomi)1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        352,
+        4592
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Switch Tipo (WATI)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch Tipo (WATI)": {
+      "main": [
+        [
+          {
+            "node": "Obtener Texto (WATI)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Descargar Audio (WATI)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Descargar Imagen (WATI)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Otro tipo (ignorar)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Obtener Texto (WATI)": {
+      "main": [
+        [
+          {
+            "node": "Normalizar mensaje",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Descargar Audio (WATI)": {
+      "main": [
+        [
+          {
+            "node": "Transcribir Audio (WATI)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transcribir Audio (WATI)": {
+      "main": [
+        [
+          {
+            "node": "Obtener Mensaje Audio (WATI)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Obtener Mensaje Audio (WATI)": {
+      "main": [
+        [
+          {
+            "node": "Normalizar mensaje",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Descargar Imagen (WATI)": {
+      "main": [
+        [
+          {
+            "node": "Analyze Imagen (WATI)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze Imagen (WATI)": {
+      "main": [
+        [
+          {
+            "node": "Imagen a Texto (WATI)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Imagen a Texto (WATI)": {
+      "main": [
+        [
+          {
+            "node": "Normalizar mensaje",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizar mensaje": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields1": {
+      "main": [
+        [
+          {
+            "node": "Redis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Redis9",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis9": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Redis10",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Operation, do nothing2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis10": {
+      "main": [
+        [
+          {
+            "node": "Filtrar emoji/vacio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtrar emoji/vacio": {
+      "main": [
+        [
+          {
+            "node": "Clasificar (Python)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clasificar (Python)": {
+      "main": [
+        [
+          {
+            "node": "Switch3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch3": {
+      "main": [
+        [
+          {
+            "node": "AGENTE SOPORTE TOMMY",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AGENTE SOPORTE TOMMY",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AGENTE SOPORTE TOMMY": {
+      "main": [
+        [
+          {
+            "node": "Switch Ticket",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Armar payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anthropic Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AGENTE SOPORTE TOMMY",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model Fallback": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AGENTE SOPORTE TOMMY",
+            "type": "ai_languageModel",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Think": {
+      "ai_tool": [
+        [
+          {
+            "node": "AGENTE SOPORTE TOMMY",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "bases_datos_python": {
+      "ai_tool": [
+        [
+          {
+            "node": "AGENTE SOPORTE TOMMY",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "memorias_python": {
+      "ai_tool": [
+        [
+          {
+            "node": "AGENTE SOPORTE TOMMY",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres Chat Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AGENTE SOPORTE TOMMY",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auto-fixing Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AGENTE SOPORTE TOMMY",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model Fix": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Auto-fixing Output Parser",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Auto-fixing Output Parser",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch Ticket": {
+      "main": [
+        [
+          {
+            "node": "Date & Time Allianz",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Date & Time General",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Date & Time Allianz": {
+      "main": [
+        [
+          {
+            "node": "TICKET ALLIANZ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Date & Time General": {
+      "main": [
+        [
+          {
+            "node": "ticket general",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Armar payload": {
+      "main": [
+        [
+          {
+            "node": "Registrar feedback (Tomi)1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "35465ac346de6358512a3a78ea5cd41783678bf62b45422c84dc42d2e28a6400"
+  }
+}

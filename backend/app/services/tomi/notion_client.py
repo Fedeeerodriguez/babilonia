@@ -470,6 +470,27 @@ def _or_contains(prop: str, ptype: str, values: List[str]) -> Optional[Dict[str,
     return {"or": [{"property": prop, ptype: {"contains": v}} for v in values]}
 
 
+def _name_por_palabras(prop: str, ptype: str, nombres: List[str]) -> Optional[Dict[str, Any]]:
+    """Filtro de nombres por PALABRA (AND de `contains` por token), OR entre nombres.
+
+    Notion `contains` exige substring contiguo, así que buscar el nombre completo
+    ("Montserrat Carrasco") falla si en la base esta como "Montserrath Carrasco",
+    con segundo nombre, orden invertido o doble espacio. Partiendo en palabras y
+    exigiendo que TODAS aparezcan (en cualquier orden) el match es robusto:
+    AND[contains "Montserrat", contains "Carrasco"] SI encuentra "Montserrath Carrasco".
+    """
+    por_nombre: List[Dict[str, Any]] = []
+    for n in (nombres or []):
+        tokens = [t for t in (n or "").split() if len(t) >= 2]
+        if not tokens:
+            continue
+        conds = [{"property": prop, ptype: {"contains": t}} for t in tokens]
+        por_nombre.append(conds[0] if len(conds) == 1 else {"and": conds})
+    if not por_nombre:
+        return None
+    return por_nombre[0] if len(por_nombre) == 1 else {"or": por_nombre}
+
+
 def buscar_emisiones_batch(
     polizas: Optional[List[str]] = None,
     clientes: Optional[List[str]] = None,
@@ -612,24 +633,41 @@ def buscar_asesores_por_nombre_batch(
     nombres = [n for n in (nombres or []) if n and len(n.strip()) >= 2]
     if not nombres:
         return []
-    or_conds: List[Dict[str, Any]] = []
-    for n in nombres:
-        or_conds.append({"property": "Nombre Completo", "title": {"contains": n}})
-        or_conds.append({"property": "Primer Nombre", "rich_text": {"contains": n}})
-        or_conds.append({"property": "Apellido Paterno", "rich_text": {"contains": n}})
-        or_conds.append({"property": "Apellido Materno", "rich_text": {"contains": n}})
-    filt = or_conds[0] if len(or_conds) == 1 else {"or": or_conds}
+
+    props = [
+        ("Nombre Completo", "title"),
+        ("Primer Nombre", "rich_text"),
+        ("Apellido Paterno", "rich_text"),
+        ("Apellido Materno", "rich_text"),
+    ]
+
+    def _un_nombre(n: str) -> Optional[Dict[str, Any]]:
+        # Cada PALABRA del nombre debe aparecer en ALGUNA prop (OR entre props),
+        # y TODAS las palabras deben estar (AND entre tokens). Tolera variantes,
+        # segundo nombre y que nombre/apellido esten en props distintas.
+        tokens = [t for t in n.split() if len(t) >= 2]
+        if not tokens:
+            return None
+        and_conds = []
+        for t in tokens:
+            and_conds.append({"or": [{"property": p, ptype: {"contains": t}} for p, ptype in props]})
+        return and_conds[0] if len(and_conds) == 1 else {"and": and_conds}
+
+    por_nombre = [f for f in (_un_nombre(n) for n in nombres) if f]
+    if not por_nombre:
+        return []
+    filt = por_nombre[0] if len(por_nombre) == 1 else {"or": por_nombre}
     return _query(DB_ASESORES, filt, page_size=page_size)
 
 
 def buscar_clientes_por_nombre_batch(
     nombres: List[str], page_size: int = 50,
 ) -> List[Dict[str, Any]]:
-    """Busca clientes por título Nombre del Cliente."""
+    """Busca clientes por título Nombre del Cliente (match por palabra, tolera variantes)."""
     nombres = [n for n in (nombres or []) if n and len(n.strip()) >= 2]
     if not nombres:
         return []
-    f = _or_contains("Nombre del Cliente", "title", nombres)
+    f = _name_por_palabras("Nombre del Cliente", "title", nombres)
     return _query(DB_CLIENTES, f, page_size=page_size)
 
 

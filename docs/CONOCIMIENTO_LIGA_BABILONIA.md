@@ -1,97 +1,94 @@
-# Conocimiento: Liga Babilonia y temas frecuentes
+# Liga Babilonia — reglas, semaforo, reingreso y roles
 
-> Documento para cargar al RAG de Tomi (página **Knowledge**).
-> Construido a partir de las correcciones del sandbox revisadas por Jimena.
-> Los `[CONFIRMAR BABILONIA]` son valores exactos aún por confirmar — subir igual la parte ya confirmada.
+## Que es la Liga Babilonia
+La Liga Babilonia es un sistema de seguimiento semanal (gamificado) que ayuda al asesor a
+mantenerse en ritmo, mejorar resultados y avanzar en su carrera dentro del programa. No es un
+curso: se juega semana a semana. Cada semana es una ronda nueva; una mala semana no afecta de
+forma permanente.
 
----
+## Como funciona: las 4 actividades semanales
+Cada semana se evaluan 4 actividades:
+- Asistencia a clases (1)
+- Citas agendadas (3)
+- Capturas (1)
+- Ventas efectivas (1 cada 2 semanas)
 
-## 1. Liga Babilonia — qué es
-La Liga Babilonia es el sistema de gamificación del programa de asesores. Los participantes
-avanzan por su actividad (citas, cierres, participación en clases). Si se pierde el ritmo,
-la participación se **suspende automáticamente** ("Programa suspendido").
+Segun cuantas cumplas, obtenes un Semaforo semanal. El sistema se actualiza una vez por semana.
 
-## 2. Cómo volver a la Liga (programa suspendido)
-Cuando un asesor ve "Programa suspendido" o pregunta "¿cómo vuelvo?", hay **3 formas de volver**:
-1. **Por pago ($)**.
-2. **Por vida extra** (si el asesor tiene una disponible).
-3. **Por misiones**, que se activan desde su plataforma de **Xperiencify**.
+## Semaforo (que significa cada color)
+- Azul: periodo de proteccion (generalmente 14 dias).
+- Dorado: cumpliste todo (4/4).
+- Verde: buen ritmo (3/4).
+- Naranja: necesitas ajustar (2/4).
+- Rojo: estas fuera de ritmo (1/4).
+- Negro: pausa del sistema por inactividad.
 
-Si en pantalla aparece un enlace para reactivar, deben **darle click a ese enlace**.
+Nota: al hacer un cierre/venta el semaforo puede cambiar, pero el color depende del conjunto de
+las 4 actividades (asistencia, citas, capturas, ventas), no de una sola.
 
-## 3. Semáforo
-El color del semáforo depende de si el asesor cumple los requisitos de **citas y participación**
-(no del cierre por sí solo). Al hacer un cierre, el semáforo **puede cambiar** si además cumple
-esos otros requisitos.
-- Verde / Amarillo / Rojo: `[CONFIRMAR BABILONIA — umbrales exactos: cuántas citas y participaciones para cada color]`
+## Pausa del sistema (Semaforo Negro)
+Si permaneces en Rojo durante 3 semanas consecutivas, el sistema pausa tus accesos.
+Esto NO es un castigo, NO afecta tu permanencia futura y es una medida automatica del sistema.
 
-## 4. Comodines
-Cuando un asesor reporta un problema con un **comodín** ("no agarra", "no me lo cambiaron",
-"intenté cambiar un comodín"):
-- **No pedir email de entrada.** Preguntar primero **qué error le marca** o qué sucede al intentarlo.
-- Si es una aclaración/reclamo (no se pudo cambiar, no se refleja), **levantar ticket a Jimena**.
-- Detalle de qué son y cómo se cambian: `[CONFIRMAR BABILONIA]`.
+## Reingreso a la Liga (como volver despues de la pausa)
+Si entras en pausa (Semaforo Negro), podes volver de 3 formas:
+1. Reactivacion con pago.
+2. Reingreso por merito, completando la Mision de Regreso.
+3. Reactivacion por Recompensa, canjeando la recompensa "Vida Extra".
+En todos los casos volves al sistema y retomas tu progreso.
 
-## 5. Vidas extra
-Una de las vías para volver a la Liga. Qué son y cómo se ganan/usan: `[CONFIRMAR BABILONIA]`.
+## Rachas y recompensas
+- Mantenerte en Verde o Dorado varias semanas seguidas genera beneficios.
+- Avanzar de Asesor Nivel 1 a Nivel 4 genera Recompensas automaticamente.
+- Las recompensas pueden incluir comodines, ventajas y acceso a oportunidades dentro de la Liga.
 
-## 6. Misiones
-Se activan desde **Xperiencify**. El **link de la clase** de una misión está en el
-**grupo de avisos** — si un asesor no lo encuentra, se le indica que lo recupere de ahí.
+## Comodines
+Los comodines son parte de las recompensas de la Liga (ventajas que se ganan avanzando).
+Si un asesor reporta un problema con un comodin ("no agarra", "no me lo cambiaron"), primero
+preguntar QUE ERROR le aparece o que pasa al intentarlo. Si es un reclamo que no se resuelve,
+escalar con ticket a Jime (temas especiales de la Liga).
 
-## 7. Grupo de Avanzados (Inversiones Atómicas)
-Cuando preguntan "cómo entro al programa de avanzados", se refieren al **grupo de avanzados
-de Inversiones Atómicas**. Requisitos (3):
-1. Llevar **más de 3 meses** en el programa.
-2. Tener **más de 18 asistencias** a las clases en vivo.
-3. Haber **terminado el curso teórico** (Xperiencify).
-Cómo se solicita el pase una vez cumplidos: `[CONFIRMAR BABILONIA]`.
+## Eventos Babilonia
+El acceso a los eventos exclusivos se obtiene cumpliendo UNA de estas condiciones:
+- Semanas consistentes en Verde o Dorado, o
+- Un numero minimo de ventas durante el ciclo, o
+- Canjear una "llave de Evento" (se gana en algun punto del programa).
+Los requisitos especificos varian por evento y estan en la pagina de Eventos.
 
----
+## Incentivos economicos
+Los asesores en Semaforo Dorado pueden participar en incentivos economicos. Las condiciones y
+montos se comunican de forma periodica.
 
-## 8. Grabaciones de clases
-Cuando pregunten por la grabación de una clase: **sí se sube**, en un **máximo de 48 hs**,
-en la **plataforma**, donde la van a poder encontrar. (No responder "no tengo acceso".)
+## Grupo de Avanzados (Inversiones Atomicas)
+Cuando preguntan "como entro al grupo de avanzados" se refieren al grupo de avanzados de
+Inversiones Atomicas. Requisitos (3): mas de 3 meses en el programa, mas de 18 asistencias a
+clases en vivo, y haber terminado el curso teorico (Xperiencify).
 
-## 9. Próxima clase
-`[CONFIRMAR BABILONIA — día/hora recurrente y canal (Zoom). El link llega ~1h antes.]`
+## Misiones y links de clase
+Las misiones se activan desde la plataforma Xperiencify. El link de la clase de una mision esta
+en el grupo de avisos: si un asesor no lo encuentra, se le indica que lo recupere de ahi.
 
-## 10. Catálogo de productos (Allianz)
-Al preguntar "¿qué seguros manejan?", además de Vida/Protección, Médico, Auto e Inversión,
-se venden también: **Elite, Patrimonial, Residencial**.
-- Descripción de una línea por producto: `[CONFIRMAR BABILONIA]`.
-- **No** se ofrece: seguro de mascotas (no está en catálogo).
-
----
-
-## 11. Escalamiento (cuándo levantar ticket y a quién)
-Estos temas NO se resuelven con loop de preguntas: se **levanta ticket** directo.
-
-| Situación | Acción | A quién |
-|---|---|---|
-| Cambio de conducto de cobro (tarjeta) | Enviar guía + **crear ticket** para seguimiento | Ceci |
-| "No pasó mi primer cargo" / "cómo pago" | Ticket para explicar el tema de pagos | Ceci |
-| Verificación de cliente ("ya verificó Odin, confirmame") | Avisar que se revisará en el portal si quedó registrada | Ceci |
-| Duda de emisión / contrato del producto | Ticket para explicar el proceso de emisión | Ceci |
-| Cita/cierre que no se refleja en el portal | Ticket | Jimena |
-| Aclaraciones de Liga (comodines, semáforo, cierres que no cuentan) | Ticket | Jimena |
-| Link vencido / error 404 portal Allianz | Ticket para generar uno nuevo | Ceci |
-
-## 12. Citas que no se reflejan
-Cuando una cita no aparece, pedir: **correo** + **día y hora** de la cita + **nombre del prospecto**,
-para localizarla en **Calendly** y ver qué pasó.
-
-## 13. Contrato del producto
-Si piden "el contrato", suele referirse al **contrato del producto**. Preguntar de qué producto es,
-o **levantar ticket a Ceci** directamente.
-
-## 14. Enlace de acompañamiento
-Para conectar a alguien con un asesor, **NO** usar el link de agenda de Jose.
-Usar el **link de acompañamiento**: `[CONFIRMAR BABILONIA — URL exacta]`.
+## Grabaciones de clases
+Las grabaciones SI se suben, en un maximo de 48 horas, en la plataforma, donde el asesor las
+puede encontrar. (No responder "no tengo acceso".) Si hay un problema con una grabacion, lo ve
+Yans.
 
 ---
 
-### Notas de mantenimiento
-- Este doc se alimenta del loop de feedback del sandbox. Cada corrección aprobada por Jimena
-  debería promoverse acá (o a un doc hijo) para que Tomi aprenda.
-- Reemplazar todos los `[CONFIRMAR BABILONIA]` con la respuesta del equipo y re-subir al RAG.
+## Enlaces utiles
+- Enlace de acompañamiento (para conectar a un asesor con acompañamiento):
+  https://calendly.com/asesores-atomicos/acompanamiento
+  (NO usar el link de agenda personal de Jose para esto.)
+
+## Roles del equipo — a quien escalar cada tema
+- Anayanci Perez: temas y dudas del curso, Xperiencify y Discord.
+- Cecilia (Ceci): captura y emision de productos, dudas de post venta, link de firma de contrato,
+  biometricos, dudas de contrato de productos.
+- Yans: cobranza, asesores en proceso de cedulacion, grabaciones de clases.
+- Jime: coordinacion, dudas que haya que escalar con el equipo directivo, y temas especiales de
+  la Liga Babilonia (comodines, semaforo, cierres/citas que no se reflejan, aclaraciones de Liga).
+
+## Uso correcto del sistema
+Toda informacion debe ser real y verificable; las ventas deben estar validadas. El uso indebido
+del sistema puede anular beneficios. La Liga esta diseñada para ayudar, no para presionar: si
+juegas, avanzas; si te detenes, el sistema pausa; y cuando quieras volver, siempre hay camino.
