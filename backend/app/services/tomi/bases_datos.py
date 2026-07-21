@@ -397,6 +397,15 @@ def consultar(
             if intents["calendly"]:
                 incluir_set.add("calendly")
 
+    # Si se pasaron nombres EXPLICITOS de cliente/asesor, buscarlos SIEMPRE (cualquier modo).
+    # Antes la busqueda por nombre solo corria en modo "completo"; si el LLM elegia
+    # "perfil"/"clientes" con un nombre, no se ejecutaba ninguna query y devolvia
+    # "no encontrado" aunque el cliente existiera.
+    if clientes_uniq:
+        incluir_set.add("clientes_por_nombre")
+    if asesores_uniq:
+        incluir_set.add("asesores_por_nombre")
+
     # El DAF (cuenta de agente) se incluye en cualquier modo si lo piden y hay asesor/email.
     if intents["daf"] and (asesores_uniq or emails_uniq):
         incluir_set.add("daf")
