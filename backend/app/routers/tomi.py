@@ -64,6 +64,7 @@ from app.services.tomi import memorias_bd as mbd
 from app.services.tomi import agente_memorias as ag_mem
 from app.services.tomi import clasificador as clasif
 from app.services.tomi import notion_scanner as nscan
+from app.services.tomi import tickets as tk
 from app.services.tomi.cache import notion_cache
 
 router = APIRouter(prefix="/api/tomi", tags=["tomi"], route_class=TomiSafeRoute)
@@ -402,6 +403,46 @@ def memorias_agente_llm(
     _auth(x_tomi_key)
     hist = [{"role": h.role, "content": h.content} for h in (body.historial or [])]
     return ag_mem.responder(db, mensaje=body.mensaje, historial=hist, max_iter=body.max_iter)
+
+
+# ---------- Creación de tickets (Notion, con asignación al admin) ----------
+
+class CrearTicketIn(BaseModel):
+    descripcion: str = Field(..., description="Descripción clara del caso (1-3 oraciones).")
+    encargado: Optional[str] = Field(
+        default=None, description="Admin que atiende: Ceci | Yans | Anayanci | Jime")
+    nombre_cliente: Optional[str] = None
+    email: Optional[str] = None
+    telefono: Optional[str] = None
+    rol: Optional[str] = Field(default=None, description="Asesor | Estudiante | Cliente Allianz | Prospecto")
+    tipo: Optional[str] = Field(default=None, description="Tipo de Solicitud (select de Notion)")
+    prioridad: Optional[str] = Field(default=None, description="baja | media | alta")
+    medio: Optional[str] = Field(default=None, description="Teléfono | Discord | Correo")
+
+
+@router.post("/crear-ticket")
+def crear_ticket(
+    body: CrearTicketIn,
+    x_tomi_key: Optional[str] = Header(default=None),
+):
+    """Crea un ticket en Notion (Tickets Babilonia) con ID real y asignado al admin.
+
+    Reemplaza los nodos crudos de n8n: el ticket_id lo genera el backend (nunca vacío
+    ni duplicado) y el ticket queda asignado a Ceci/Yans/Anayanci/Jime en el campo
+    "Asignado a". Devuelve {ok, ticket_id, encargado, url}.
+    """
+    _auth(x_tomi_key)
+    return tk.crear_ticket(
+        descripcion=body.descripcion,
+        encargado=body.encargado,
+        nombre_cliente=body.nombre_cliente,
+        email=body.email,
+        telefono=body.telefono,
+        rol=body.rol,
+        tipo=body.tipo,
+        prioridad=body.prioridad,
+        medio=body.medio,
+    )
 
 
 @router.get("/memorias/categorias")
