@@ -6,3 +6,8 @@ dist/
 .env
 *.db
 .DS_Store
+
+# Documentos fuente de Allianz (Condiciones Generales) y reportes generados — no versionar (pesados / material externo)
+/*.pdf
+docs/*.pdf
+docs/*.html

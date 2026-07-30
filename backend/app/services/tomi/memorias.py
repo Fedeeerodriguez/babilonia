@@ -5,9 +5,14 @@ Reemplaza el sub-agente `memorias_supabase` de n8n.
 Esquema de Notion → Supabase:
     documents (id, content, metadata jsonb, embedding vector)
 
-Las memorias están cargadas desde el endpoint /api/documents/upload con
-`source` ∈ {plu3, patrimonial, proteccion, auto, educacion}.
+Taxonomía de metadata (ver docs/MAPA_CONOCIMIENTO_TOMI.md — mapa de navegación):
+  - `clave`     → llave unificada por producto: PLU3, OP3D, OPPT, SVIP, VIPP, AUIN
+                  (existe TANTO en fichas curadas source='productos' como en chunks legacy)
+  - `categoria` → ahorro | inversion | proteccion | seguro_general | liga | academia | ...
+  - `source`    → 'productos' (fichas curadas) o legacy {plu3,educacion,patrimonial,auto,proteccion}
+  - `doc_tipo`  → ficha_curada (autoritativa) | conocimiento_producto | proceso_liga | ...
 
+El ruteo por categoría filtra por `clave` (unificada), con fallback a `source`.
 Sin LLM intermedio. La clasificación de categoría se hace por keywords (determinístico).
 """
 from __future__ import annotations
@@ -32,7 +37,19 @@ EMBED_MODEL = os.getenv("OPENAI_EMBED_MODEL", "text-embedding-3-small")
 # "sandbox.documents", "public.documents", etc.
 DOCUMENTS_TABLE = os.getenv("DOCUMENTS_TABLE", "documents")
 
-CATEGORIAS_VALIDAS = ("plu3", "patrimonial", "proteccion", "auto", "educacion")
+CATEGORIAS_VALIDAS = ("plu3", "patrimonial", "proteccion", "auto", "educacion", "elite")
+
+# Mapa categoría → clave Allianz. La `clave` es la ÚNICA llave unificada que existe TANTO
+# en las fichas curadas (source='productos') como en los chunks históricos de PDF. Filtrar
+# solo por metadata.source NO alcanza las fichas curadas nuevas. Ver docs/MAPA_CONOCIMIENTO_TOMI.md.
+CATEGORIA_A_CLAVE: Dict[str, str] = {
+    "plu3": "PLU3",
+    "educacion": "OP3D",
+    "patrimonial": "OPPT",
+    "elite": "SVIP",
+    "proteccion": "VIPP",
+    "auto": "AUIN",
+}
 
 # Keywords para clasificación determinística (sin LLM).
 # Cada categoría tiene un set; el matcheo es case-insensitive y unicode-folded.
@@ -60,6 +77,12 @@ KEYWORDS: Dict[str, List[str]] = {
         "curso", "módulo", "modulo", "academia", "estudiante", "alumno", "alumna",
         "babilonia academia", "clase", "lección", "leccion", "tutoría", "tutoria",
         "membresía", "membresia", "discord", "xp", "rockstar",
+        "optimaxx educacion", "op3d", "educacional", "seguro educacional", "ahorro educacion",
+    ],
+    "elite": [
+        "elite", "svip", "optimaxx elite", "multimoneda", "multi-moneda", "dólares",
+        "dolares", "euros", "renta variable", "inversión elite", "inversion elite",
+        "seguro de vida inversión", "seguro de vida inversion",
     ],
 }
 
@@ -154,8 +177,11 @@ def buscar_chunks(
     params: Dict[str, Any] = {"emb": str(emb), "k": k}
     where = ""
     if categoria:
-        where = "WHERE metadata->>'source' = :categoria"
+        # Filtrar por `clave` (unifica fichas curadas source='productos' + chunks legacy)
+        # y también por `source` para compatibilidad con cualquier fila sin clave.
+        where = "WHERE (metadata->>'clave' = :clave OR metadata->>'source' = :categoria)"
         params["categoria"] = categoria
+        params["clave"] = CATEGORIA_A_CLAVE.get(categoria, "")
 
     sql = f"""
         SELECT
