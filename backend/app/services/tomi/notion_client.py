@@ -1066,9 +1066,24 @@ def _to_int(v: Any) -> int:
         return 0
 
 
+def pick_dias_atraso(c: Dict[str, Any]) -> Any:
+    """Devuelve los días de atraso priorizando el valor VIVO sobre el guardado.
+
+    En Notion hay dos campos:
+      - "Días de Atraso Actuales": formula → se recalcula hoy (refleja regularizaciones).
+      - "Días de atraso": number → valor guardado/sincronizado, puede quedar VIEJO.
+    Preferimos la formula. OJO: 0 es un valor VALIDO (cliente al corriente), por eso
+    chequeamos None/"" y NO truthiness (un `or` trataria 0 como ausente y volveria al viejo).
+    """
+    v = c.get("Días de Atraso Actuales")
+    if v is None or v == "":
+        v = c.get("Días de atraso")
+    return v
+
+
 def _cobranza_resumen(c: Dict[str, Any]) -> Dict[str, Any]:
     """Extrae los campos relevantes de atraso de una cobranza flattened."""
-    dias = _to_int(c.get("Días de atraso") or c.get("Días de Atraso Actuales") or 0)
+    dias = _to_int(pick_dias_atraso(c))
     return {
         "poliza": c.get("Póliza") or c.get("_title") or "(sin póliza)",
         # "Número de Referencia" es lo que el usuario llama "número de cliente".

@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
+from app.services.tomi import notion_client as nc
+
 
 def _safe(val: Any, default: str = "—") -> str:
     if val is None or val == "":
@@ -361,7 +363,7 @@ def renderizar(resultado: Dict[str, Any]) -> str:
                 f"{i}. {pol} — "
                 f"{ref_str}"
                 f"Estado: `{_safe(c.get('Estado de Cobranza'))}` | "
-                f"Días atraso: `{_safe(c.get('Días de atraso'))}` | "
+                f"Días atraso: `{_safe(nc.pick_dias_atraso(c))}` | "
                 f"Próximo cobro: `{_safe((c.get('Próximo intento de cobro') or {}).get('start'))}`"
             )
         lines.append("")

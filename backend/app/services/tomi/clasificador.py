@@ -130,10 +130,11 @@ def clasificar(
     email_norm = (email or "").strip().lower() or extraer_email(mensaje_usuario or "")
 
     if not email_norm:
-        resultado = {"comando_1": "no registrado", "comando_2": "prospecto",
+        # Aún no sabemos quién es: NO asumir prospecto. Señalamos que falta el email
+        # para que Tomi lo pida antes de responder. No se cachea (no sabemos quién es).
+        resultado = {"comando_1": "no registrado", "comando_2": "desconocido",
                      "email": None, "user_id": user_id, "user_nombre": user_nombre,
-                     "fuente": "sin_email", "data": None}
-        # no guardamos en cache: aún no sabemos quién es
+                     "fuente": "sin_email", "necesita_email": True, "data": None}
         return resultado
 
     # C) cache por email (otro chat con el mismo correo)

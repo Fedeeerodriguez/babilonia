@@ -16,6 +16,8 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List, Optional
 
+from app.services.tomi import notion_client as nc
+
 # Regex permisivo de teléfono: empieza con + o dígito, al menos 7 dígitos en total
 RX_TELEFONO = re.compile(r"^[\+]?[\d\s\-\(\)]{7,}$")
 
@@ -146,7 +148,7 @@ def detectar(resultado: Dict[str, Any]) -> List[Dict[str, Any]]:
     # --- 3. Validaciones sobre cobranzas ---
     for c in resultado.get("cobranzas") or []:
         poliza = c.get("Póliza") or "(sin póliza)"
-        dias_atraso = c.get("Días de atraso") or c.get("Días de Atraso Actuales") or 0
+        dias_atraso = nc.pick_dias_atraso(c)
         try:
             dias_atraso = int(dias_atraso)
         except Exception:
