@@ -147,3 +147,42 @@ def test_detectar_intent_ninguno():
 def test_prioridad_estado_orden():
     assert bd._prioridad_estado("Activa") < bd._prioridad_estado("Cancelada")
     assert bd._prioridad_estado("estado inventado") == 99
+
+
+# ---------------------------------------------------------------- intents typo-tolerantes (mejoras)
+def test_intent_cobranza_con_typos():
+    # 'covranza' y 'atrazo' deben rutear a cobranza (typos reales del sandbox)
+    assert bd._detectar_intents("kiero saber mi covranza y atrazo")["cobranza"] is True
+
+
+def test_intent_renovacion():
+    assert bd._detectar_intents("cuales son mis renovaciones pendientes")["renovacion"] is True
+
+
+def test_intent_siniestro():
+    assert bd._detectar_intents("kiero reportar un siniestro por robo")["siniestro"] is True
+
+
+def test_intent_comision_con_typo():
+    assert bd._detectar_intents("cuanto de comiciones me toca")["comision"] is True
+
+
+def test_intent_bono_puntos():
+    assert bd._detectar_intents("cuantos vonos y puntos de convencion llevo")["bono"] is True
+
+
+def test_norm_saca_acentos():
+    assert bd._norm("Renovación PÓLIZA") == "renovacion poliza"
+
+
+def test_render_categorias_nuevas_seguro():
+    # el informe no rompe sin las claves nuevas, y las renderiza si vienen
+    assert isinstance(inf_render({"usuarios": {}}), str)
+    r = inf_render({"usuarios": {}, "renovaciones": [
+        {"_title": "Renov PLU3-1", "_url": "http://x", "Estado": "Pendiente"}]})
+    assert "Renovaciones (1)" in r
+
+
+from app.services.tomi import informe as _inf
+def inf_render(d):
+    return _inf.renderizar(d)
