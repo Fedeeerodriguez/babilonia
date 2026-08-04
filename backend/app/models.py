@@ -109,6 +109,20 @@ class SandboxFeedback(Base):
     reviewed_at = Column(DateTime(timezone=True))
 
 
+class TomiSetting(Base):
+    """Ajustes globales de Tomi en formato key/value.
+
+    Hoy guarda el interruptor de la automatización (`automation_enabled`): la
+    plataforma lo prende/apaga y el clasificador lo lee para pausar a Tomi.
+    Vive en la DB para sobrevivir reinicios y compartirse entre workers.
+    """
+    __tablename__ = "tomi_settings"
+    key = Column(String, primary_key=True)
+    value = Column(String)
+    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_by = Column(String)
+
+
 class FailedDispatch(Base):
     """Dead-letter: disparos del trigger 23h que fallaron definitivamente.
 
