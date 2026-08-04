@@ -145,3 +145,18 @@ si el RAG no trae nada relevante .................. escalar a humano, NO inventa
 
 > **La taxonomía del RAG (clave/categoria/producto/doc_tipo) y las CATEGORIAS/KEYWORDS de
 > `memorias.py` deben coincidir con este mapa.** Si cambiás uno, cambiá el otro.
+
+---
+
+## 6. Acceso rápido y capacidades nuevas (actualización)
+
+- **Cheat-sheet operativo:** [docs/CHEATSHEET_TOMI.md](CHEATSHEET_TOMI.md) — tabla veloz
+  "pregunta → fuente → qué responder". También cargado en el RAG (`doc_tipo=cheatsheet`).
+- **Ruteo tolerante a typos:** `bases_datos._detectar_intents` normaliza acentos y reconoce
+  errores comunes (covranza, atrazo, comiciones, vono, ajendar…).
+- **Categorías nuevas por intent** (`bases_datos.consultar` + `informe.py`): `renovacion`,
+  `siniestro`, `comision` — se filtran por póliza o email del asesor. Sus bases pueden estar
+  **vacías**: en ese caso el informe agrega una advertencia `sin_datos_categoria` y el agente
+  responde con honestidad (NO desvía a la póliza ni inventa).
+- **Bonos / puntos / convención:** conceptos del **programa de asesores**, no aplican a
+  clientes. Requieren la clave del agente (no se exponen crudos para no filtrar entre asesores).

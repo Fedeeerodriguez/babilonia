@@ -37,11 +37,21 @@ RX_NOMBRE_ASESOR = re.compile(
 )
 
 KEYWORDS_TICKETS = (
-    "siniestro", "denuncia", "tramite", "trámite", "queja", "reclamo",
-    "endoso", "modificación", "modificacion", "renovación", "renovacion",
+    "denuncia", "tramite", "queja", "reclamo",
+    "endoso", "modificacion", "aclaracion", "problema con",
 )
-KEYWORDS_CALENDLY = ("turno", "agenda", "agendar", "reunión", "reunion", "cita", "calendly")
-KEYWORDS_COBRANZA = ("cobranza", "pago", "saldo", "cuota", "vencimiento", "pagar", "debo")
+# Renovaciones y siniestros ahora tienen intents propios (tienen su base dedicada).
+KEYWORDS_RENOVACION = ("renovacion", "renovaciones", "renovar", "renovasion", "vencimiento de poliza")
+KEYWORDS_SINIESTRO = ("siniestro", "siniestros", "choque", "accidente", "robo", "reembolso")
+KEYWORDS_COMISION = ("comision", "comisiones", "comicion", "comiciones", "cuanto me pagan",
+                     "cuanto gano", "mi pago de asesor")
+# Bonos / puntos / convencion: conceptos del PROGRAMA DE ASESORES (no aplican a clientes).
+KEYWORDS_BONO = ("bono", "bonos", "vono", "puntos", "convencion", "mes 13", "promotoria",
+                 "puntos de convencion", "premio")
+KEYWORDS_CALENDLY = ("turno", "agenda", "agendar", "ajendar", "reunion", "reunuon", "cita", "calendly")
+KEYWORDS_COBRANZA = ("cobranza", "covranza", "pago", "pagar", "saldo", "adeudo", "cuota",
+                     "vencimiento", "vencimineto", "bencimiento", "debo", "devo", "atraso",
+                     "atrazo", "al corriente", "al dia")
 KEYWORDS_DAF = ("daf", "número de agente", "numero de agente", "clave de agente",
                 "cédula", "cedula", "cuenta de agente", "credencial", "estado del daf")
 # Intención "¿qué ofrecen / existe este producto?" → traer el catálogo real para
@@ -68,17 +78,37 @@ def _extraer(mensaje: str) -> Tuple[List[str], List[str], List[str], List[str]]:
     return emails, polizas, nombres_cli, nombres_ase
 
 
+_ACENTOS = {"á": "a", "é": "e", "í": "i", "ó": "o", "ú": "u", "ñ": "n", "ü": "u"}
+
+
+def _norm(s: str) -> str:
+    """lower + saca acentos, para que el ruteo tolere tildes y typos con acento."""
+    s = (s or "").lower()
+    for a, b in _ACENTOS.items():
+        s = s.replace(a, b)
+    return s
+
+
+_INTENT_KEYS = ("tickets", "calendly", "cobranza", "daf", "productos",
+                "renovacion", "siniestro", "comision", "bono")
+
+
 def _detectar_intents(mensaje: str) -> Dict[str, bool]:
     if not mensaje:
-        return {"tickets": False, "calendly": False, "cobranza": False, "daf": False,
-                "productos": False}
-    m = mensaje.lower()
+        return {k: False for k in _INTENT_KEYS}
+    m = _norm(mensaje)
+    def hit(kws):
+        return any(_norm(k) in m for k in kws)
     return {
-        "tickets": any(k in m for k in KEYWORDS_TICKETS),
-        "calendly": any(k in m for k in KEYWORDS_CALENDLY),
-        "cobranza": any(k in m for k in KEYWORDS_COBRANZA),
-        "daf": any(k in m for k in KEYWORDS_DAF),
-        "productos": any(k in m for k in KEYWORDS_PRODUCTOS),
+        "tickets": hit(KEYWORDS_TICKETS),
+        "calendly": hit(KEYWORDS_CALENDLY),
+        "cobranza": hit(KEYWORDS_COBRANZA),
+        "daf": hit(KEYWORDS_DAF),
+        "productos": hit(KEYWORDS_PRODUCTOS),
+        "renovacion": hit(KEYWORDS_RENOVACION),
+        "siniestro": hit(KEYWORDS_SINIESTRO),
+        "comision": hit(KEYWORDS_COMISION),
+        "bono": hit(KEYWORDS_BONO),
     }
 
 
@@ -730,8 +760,59 @@ def consultar(
         except Exception as e:
             log.error("buscar_daf falló: %s", e)
 
+    # Renovaciones / Siniestros / Comisiones: bases dedicadas (pueden estar vacías todavía).
+    # Se filtran SIEMPRE por póliza y/o email del asesor -> nunca trae datos de otro asesor.
+    renovaciones: List[Dict[str, Any]] = []
+    siniestros: List[Dict[str, Any]] = []
+    comisiones: List[Dict[str, Any]] = []
+    email_ase_filtro = email_asesor or next(
+        (e for e, u in (usuarios or {}).items()
+         if isinstance(u, dict) and u.get("tipo") == "asesor"), None)
+
+    def _fetch_cat(fn, con_asesor: bool):
+        out, vistos = [], set()
+        combos = [{"poliza": p} for p in polizas_uniq]
+        if con_asesor and email_ase_filtro:
+            combos.append({"email_asesor": email_ase_filtro})
+        for kw in combos:
+            try:
+                for row in fn(limit=20, **kw):
+                    if row.get("_id") not in vistos:
+                        vistos.add(row.get("_id")); out.append(row)
+            except Exception as e:
+                log.error("%s falló: %s", getattr(fn, "__name__", "cat"), e)
+        return out
+
+    if intents.get("renovacion"):
+        renovaciones = _fetch_cat(nc.buscar_renovaciones, con_asesor=True)
+    if intents.get("siniestro"):
+        siniestros = _fetch_cat(nc.buscar_siniestros, con_asesor=True)
+    if intents.get("comision"):
+        comisiones = _fetch_cat(nc.buscar_comisiones, con_asesor=False)  # solo filtra por póliza
+
+    # Si preguntaron por una categoría del PROGRAMA DE ASESORES y no hubo datos, avisamos
+    # explícito para que Tommy responda con honestidad (no que se desvíe a la póliza).
+    for intent, datos, etiqueta in (
+        ("renovacion", renovaciones, "renovaciones"),
+        ("siniestro", siniestros, "siniestros"),
+        ("comision", comisiones, "comisiones"),
+        ("bono", None, "bonos/puntos/convención"),
+    ):
+        if intents.get(intent) and not datos:
+            advertencias.append({
+                "severidad": "info",
+                "tipo": "sin_datos_categoria",
+                "categoria": etiqueta,
+                "mensaje": f"No hay {etiqueta} cargados para esta consulta. Es dato del programa "
+                           f"de asesores; si el usuario es cliente, aclarar que no aplica. "
+                           f"NO inventes ni lo sustituyas por datos de la póliza.",
+            })
+
     elapsed = int((time.time() - t0) * 1000)
     return {
+        "renovaciones": renovaciones,
+        "siniestros": siniestros,
+        "comisiones": comisiones,
         "usuarios": usuarios,
         "emisiones": emisiones,
         "cobranzas": cobranzas,

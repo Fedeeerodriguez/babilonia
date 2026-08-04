@@ -427,6 +427,33 @@ def renderizar(resultado: Dict[str, Any]) -> str:
             )
         lines.append("")
 
+    # Renovaciones / Siniestros / Comisiones (bases dedicadas — render genérico-seguro).
+    def _fmt_generico(row: Dict[str, Any]) -> str:
+        partes: List[str] = []
+        for k, v in row.items():
+            if k.startswith("_") or v in (None, "", [], {}):
+                continue
+            if isinstance(v, dict):
+                v = v.get("start") or v.get("name") or ""
+            if isinstance(v, (list, dict)) or v == "":
+                continue
+            partes.append(f"{k}: `{_safe(v)}`")
+            if len(partes) >= 5:
+                break
+        return " | ".join(partes)
+
+    for _clave, _titulo in (("renovaciones", "Renovaciones"),
+                            ("siniestros", "Siniestros"),
+                            ("comisiones", "Comisiones")):
+        _items = resultado.get(_clave) or []
+        if _items:
+            lines.append(f"## {_titulo} ({len(_items)})")
+            for i, r in enumerate(_items, 1):
+                tit = _md_link(_safe(r.get("_title") or r.get("Nombre") or _titulo[:-1]), r.get("_url"))
+                det = _fmt_generico(r)
+                lines.append(f"{i}. {tit}" + (f" — {det}" if det else ""))
+            lines.append("")
+
     # No encontrados
     ne = resultado.get("no_encontrados") or {}
     if ne.get("emails") or ne.get("polizas"):
