@@ -141,7 +141,7 @@ si el RAG no trae nada relevante .................. escalar a humano, NO inventa
 | Cliente Notion + helpers (atraso, etc.) | `backend/app/services/tomi/notion_client.py` |
 | Ingesta de conocimiento al RAG | `backend/scripts/ingest_productos_rag.py` |
 | Fichas de producto (fuente del RAG) | `docs/productos/*.md` |
-| Prompt del agente principal | `docs/PROMPT_TOMMY_SYSTEM_v4.6.md` (se aplica en n8n) |
+| Prompt del agente principal | `docs/PROMPT_TOMMY_SYSTEM_v4.7.md` (se aplica en n8n) |
 
 > **La taxonomía del RAG (clave/categoria/producto/doc_tipo) y las CATEGORIAS/KEYWORDS de
 > `memorias.py` deben coincidir con este mapa.** Si cambiás uno, cambiá el otro.

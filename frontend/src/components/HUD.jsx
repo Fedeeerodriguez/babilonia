@@ -4,6 +4,7 @@ import { LogOut, MessageCircle, Search, Menu } from 'lucide-react'
 import api from '../utils/api'
 import { useAuth } from '../context/AuthContext'
 import Logo from './Logo'
+import AutomationToggle from './AutomationToggle'
 
 export default function HUD({ onMenu }) {
   const { user, logout } = useAuth()
@@ -42,6 +43,8 @@ export default function HUD({ onMenu }) {
         )}
 
         <div className="ml-auto flex items-center gap-1">
+          <AutomationToggle />
+          <div className="w-px h-5 bg-border mx-1.5"/>
           <IconBtn title="Buscar"><Search size={15}/></IconBtn>
           <IconBtn title="WhatsApp"><MessageCircle size={15} className="text-cobalt-600"/></IconBtn>
           <div className="w-px h-5 bg-border mx-2"/>

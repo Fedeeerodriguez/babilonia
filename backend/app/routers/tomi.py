@@ -65,6 +65,7 @@ from app.services.tomi import agente_memorias as ag_mem
 from app.services.tomi import clasificador as clasif
 from app.services.tomi import notion_scanner as nscan
 from app.services.tomi import tickets as tk
+from app.services.tomi import interruptor as sw
 from app.services.tomi.cache import notion_cache
 
 router = APIRouter(prefix="/api/tomi", tags=["tomi"], route_class=TomiSafeRoute)
@@ -167,6 +168,19 @@ def clasificar_usuario(
         }
     """
     _auth(x_tomi_key)
+    # Interruptor global: si la automatización está apagada desde la plataforma,
+    # cortamos ACÁ (primer endpoint que toca cada mensaje). n8n lee `pausado` y
+    # frena el flujo → Tomi no responde nada. Fail-open: ante error, sigue activo.
+    if not sw.is_enabled(db):
+        return {
+            "comando_1": "pausado",
+            "comando_2": "pausado",
+            "pausado": True,
+            "email": None,
+            "user_id": body.user_id,
+            "user_nombre": body.user_nombre,
+            "fuente": "interruptor",
+        }
     return clasif.clasificar(
         db,
         user_id=body.user_id,
@@ -357,8 +371,14 @@ class AgenteIn(BaseModel):
 
 
 @router.post("/agente")
-def agente_llm(body: AgenteIn, x_tomi_key: Optional[str] = Header(default=None)):
+def agente_llm(
+    body: AgenteIn,
+    x_tomi_key: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+):
     _auth(x_tomi_key)
+    if not sw.is_enabled(db):  # defensa en profundidad: el agente mismo se niega
+        return {"respuesta": "", "pausado": True, "error": "automatización en pausa"}
     hist = [{"role": h.role, "content": h.content} for h in (body.historial or [])]
     return ag.responder(
         mensaje=body.mensaje,
@@ -397,10 +417,13 @@ class MemoriasAgenteIn(BaseModel):
 def memorias_agente_llm(
     body: MemoriasAgenteIn,
     db: Session = Depends(get_docs_db),
+    main_db: Session = Depends(get_db),
     x_tomi_key: Optional[str] = Header(default=None),
 ):
     """Agente LLM que elige categoría y delega en memorias_bd. Devuelve informe verbatim."""
     _auth(x_tomi_key)
+    if not sw.is_enabled(main_db):
+        return {"respuesta": "", "pausado": True, "error": "automatización en pausa"}
     hist = [{"role": h.role, "content": h.content} for h in (body.historial or [])]
     return ag_mem.responder(db, mensaje=body.mensaje, historial=hist, max_iter=body.max_iter)
 
@@ -424,6 +447,7 @@ class CrearTicketIn(BaseModel):
 def crear_ticket(
     body: CrearTicketIn,
     x_tomi_key: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
 ):
     """Crea un ticket en Notion (Tickets Babilonia) con ID real y asignado al admin.
 
@@ -432,6 +456,8 @@ def crear_ticket(
     "Asignado a". Devuelve {ok, ticket_id, encargado, url}.
     """
     _auth(x_tomi_key)
+    if not sw.is_enabled(db):
+        return {"ok": False, "pausado": True, "error": "automatización en pausa"}
     return tk.crear_ticket(
         descripcion=body.descripcion,
         encargado=body.encargado,
