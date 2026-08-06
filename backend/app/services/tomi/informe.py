@@ -359,12 +359,23 @@ def renderizar(resultado: Dict[str, Any]) -> str:
                 or c.get("Nº de Referencia")
             )
             ref_str = f"N° de cliente: `{_safe(ref)}` | " if ref else ""
+            # DEUDA REAL = Monto Faltante (lo que se debe HOY). Es el dato PRINCIPAL
+            # de cobranza; sin él el agente no puede responder "cuánto debo".
+            monto = c.get("Monto Faltante")
+            monto_str = "—" if monto is None else f"${monto}"
+            prox = (
+                (c.get("Próximo intento de cobro") or {}).get("start")
+                or (c.get("Fecha Límite de Pago") or {}).get("start")
+            )
             lines.append(
                 f"{i}. {pol} — "
                 f"{ref_str}"
-                f"Estado: `{_safe(c.get('Estado de Cobranza'))}` | "
+                f"**Adeudo (deuda real hoy): `{monto_str}`** | "
+                f"Estado póliza: `{_safe(c.get('Estado de la Póliza'))}` | "
+                f"Estado cobranza: `{_safe(c.get('Estado de Cobranza'))}` | "
+                f"Semáforo: `{_safe(c.get('Semáforo'))}` | "
                 f"Días atraso: `{_safe(nc.pick_dias_atraso(c))}` | "
-                f"Próximo cobro: `{_safe((c.get('Próximo intento de cobro') or {}).get('start'))}`"
+                f"Próximo cobro: `{_safe(prox)}`"
             )
         lines.append("")
 
