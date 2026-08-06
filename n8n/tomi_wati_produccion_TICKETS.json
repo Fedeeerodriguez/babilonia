@@ -1089,7 +1089,7 @@
           "parameters": [
             {
               "name": "Authorization",
-              "value": "=Bearer wati_85be6dfb-48c0-4435-95fc-db55728764fc.3gdpVSxWbihz7IDKiwTWoQJ5R5IkX2jIXN8JSDIiPJu0aEuXkItzxGFo0bOBz4d7VUbv3ExeuIAHsRr0Hi1lmyHvP7JT2ducsFLi6TmM7o4FEZCAd78Tyb96QlWJ1BGb"
+              "value": "=Bearer {{ $env.WATI_TOKEN }}"
             },
             {
               "name": "Accept",
