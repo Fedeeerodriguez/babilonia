@@ -1074,7 +1074,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.WATI_SERVER }}/api/v1/sendSessionMessage/{{ $('Webhook').item.json.body.waId }}",
+        "url": "=https://live-mt-server.wati.io/465046/api/v1/sendSessionMessage/{{ $('Webhook').item.json.body.waId }}",
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
