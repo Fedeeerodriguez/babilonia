@@ -1036,6 +1036,83 @@
       ],
       "id": "c9b2d8a4-int1-4f6e-8a1b-pausadofin001",
       "name": "Pausado (fin)"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "resp-noempty-0001",
+              "leftValue": "={{ $json.output.respuesta_mensaje }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -64,
+        4180
+      ],
+      "id": "d1e2f3a4-resp-45ab-9cd2-responderif01",
+      "name": "¿Responder?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.WATI_SERVER }}/api/v1/sendSessionMessage/{{ $('Webhook').item.json.body.waId }}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "messageText",
+              "value": "={{ $json.output.respuesta_mensaje }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer wati_85be6dfb-48c0-4435-95fc-db55728764fc.3gdpVSxWbihz7IDKiwTWoQJ5R5IkX2jIXN8JSDIiPJu0aEuXkItzxGFo0bOBz4d7VUbv3ExeuIAHsRr0Hi1lmyHvP7JT2ducsFLi6TmM7o4FEZCAd78Tyb96QlWJ1BGb"
+            },
+            {
+              "name": "Accept",
+              "value": "*/*"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        200,
+        4180
+      ],
+      "id": "e2f3a4b5-wati-4f6e-8a1b-enviarwati001",
+      "name": "Enviar a WATI",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
     }
   ],
   "connections": {
@@ -1290,6 +1367,11 @@
             "node": "Armar payload",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "¿Responder?",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
@@ -1431,6 +1513,18 @@
             "index": 0
           }
         ]
+      ]
+    },
+    "¿Responder?": {
+      "main": [
+        [
+          {
+            "node": "Enviar a WATI",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
       ]
     }
   },
