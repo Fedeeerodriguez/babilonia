@@ -93,50 +93,58 @@ def _client() -> Client:
 
 notion_breaker = CircuitBreaker(
     "notion",
-    fail_threshold=int(os.getenv("NOTION_CB_THRESHOLD", "6")),
-    cooldown=float(os.getenv("NOTION_CB_COOLDOWN", "30")),
+    fail_threshold=int(os.getenv("NOTION_CB_THRESHOLD", "10")),
+    cooldown=float(os.getenv("NOTION_CB_COOLDOWN", "20")),
 )
 
 
+# Marcadores de errores TRANSITORIOS de Notion (rate-limit, timeouts, 5xx, red):
+# estos se reintentan y NO deberían abrir el breaker salvo que se agoten los intentos.
+_TRANSIENT_MARKERS = (
+    "rate", "429", "timeout", "timed out", "temporarily", "unavailable",
+    "connection", "reset", "502", "503", "504", "gateway",
+)
+
+
+def _es_transitorio(e: Exception) -> bool:
+    status = getattr(e, "status", None)
+    if status in (429, 500, 502, 503, 504):
+        return True
+    s = str(e).lower()
+    return any(m in s for m in _TRANSIENT_MARKERS)
+
+
 def _retry_429(fn, *args, max_attempts: int = 4, **kwargs):
-    """Wrapper con backoff exponencial ante rate-limit de Notion (429) + circuit
-    breaker: si Notion está caído, corta rápido en vez de seguir golpeando."""
+    """Ejecuta fn con reintentos ante errores TRANSITORIOS de Notion (429, timeouts,
+    5xx, cortes de red) con backoff acotado, más circuit breaker.
+
+    - Errores transitorios: reintenta (backoff 0.8→6s cap). Solo cuentan como fallo
+      del breaker si se agotan los reintentos.
+    - Errores NO transitorios (ej: filtro inválido, 404): fallan al toque + breaker.
+    Antes solo se reintentaban los 429 y cualquier timeout abría el breaker de una,
+    lo que bajo ráfagas disparaba cascadas de "inconveniente técnico"."""
     import time as _t
 
     if not notion_breaker.allow():
         raise CircuitOpenError("Notion no disponible (circuit abierto)")
 
-    delay = 1.0
+    delay = 0.8
     for attempt in range(max_attempts):
         try:
             result = fn(*args, **kwargs)
             notion_breaker.record_success()
             return result
-        except APIResponseError as e:
-            if getattr(e, "status", None) == 429 or "rate" in str(e).lower():
-                log.warning("Notion 429 — retry %d/%d en %.1fs", attempt + 1, max_attempts, delay)
+        except Exception as e:  # noqa: BLE001
+            if _es_transitorio(e) and attempt < max_attempts - 1:
+                log.warning("Notion transitorio (%s) — retry %d/%d en %.1fs",
+                            type(e).__name__, attempt + 1, max_attempts, delay)
                 _t.sleep(delay)
-                delay *= 2
+                delay = min(delay * 2, 6.0)
                 continue
             notion_breaker.record_failure()
+            if _es_transitorio(e):
+                log.error("Notion sigue fallando tras %d reintentos: %s", max_attempts, e)
             raise
-        except Exception as e:
-            if "rate" in str(e).lower() or "429" in str(e):
-                _t.sleep(delay)
-                delay *= 2
-                continue
-            notion_breaker.record_failure()
-            raise
-    # Último intento: si vuelve a fallar por rate-limit, propagamos un error claro
-    # en vez de dejar escapar la excepción cruda del SDK.
-    try:
-        result = fn(*args, **kwargs)
-        notion_breaker.record_success()
-        return result
-    except Exception as e:
-        notion_breaker.record_failure()
-        log.error("Notion sigue fallando tras %d reintentos: %s", max_attempts, e)
-        raise
 
 
 def _flatten_rollup_array(items: List[Dict[str, Any]]) -> Any:
@@ -1172,18 +1180,38 @@ def buscar_eventos_calendly(
 
 
 def clasificar_usuario_por_email(email: str) -> Dict[str, Any]:
-    """Devuelve {tipo, data} donde tipo ∈ asesor|estudiante|cliente|prospecto."""
+    """Devuelve {tipo, data} donde tipo ∈ asesor|estudiante|cliente|prospecto.
+
+    Las 3 búsquedas (asesor/estudiante/cliente) corren EN PARALELO: antes iban en
+    serie y un cliente requería 3 queries secuenciales a Notion, lo que bajo carga
+    superaba los 15s que espera el nodo clasificador de n8n → "inconveniente técnico"
+    al identificar. En paralelo el tiempo total es el de la query más lenta.
+    Prioridad de rol: asesor > estudiante > cliente.
+    """
     if not email:
         return {"tipo": "prospecto", "data": None}
-    asesor = buscar_asesor_por_email(email)
-    if asesor:
-        return {"tipo": "asesor", "data": asesor[0]}
-    estudiante = buscar_estudiante_por_email(email)
-    if estudiante:
-        return {"tipo": "estudiante", "data": estudiante[0]}
-    cliente = buscar_cliente_por_email(email)
-    if cliente:
-        return {"tipo": "cliente", "data": cliente[0]}
+    from concurrent.futures import ThreadPoolExecutor
+
+    fns = {
+        "asesor": buscar_asesor_por_email,
+        "estudiante": buscar_estudiante_por_email,
+        "cliente": buscar_cliente_por_email,
+    }
+    resultados: Dict[str, List[Dict[str, Any]]] = {}
+    with ThreadPoolExecutor(max_workers=3) as ex:
+        futs = {ex.submit(fn, email): tipo for tipo, fn in fns.items()}
+        for fut in futs:
+            tipo = futs[fut]
+            try:
+                resultados[tipo] = fut.result()
+            except Exception as e:  # noqa: BLE001
+                log.warning("clasificar: fallo consulta %s (%s): %s", tipo, type(e).__name__, e)
+                resultados[tipo] = []
+
+    for tipo in ("asesor", "estudiante", "cliente"):
+        rows = resultados.get(tipo) or []
+        if rows:
+            return {"tipo": tipo, "data": rows[0]}
     return {"tipo": "prospecto", "data": None}
 
 
