@@ -17,7 +17,7 @@ from typing import Any, Callable, Dict, Optional, Tuple
 log = logging.getLogger("tomi.cache")
 
 # TTL más largo y caché más grande: descargan Notion en vez de competir con él.
-DEFAULT_TTL = int(os.getenv("TOMI_CACHE_TTL", "300"))
+DEFAULT_TTL = int(os.getenv("TOMI_CACHE_TTL", "600"))
 DEFAULT_MAX_SIZE = int(os.getenv("TOMI_CACHE_MAX_SIZE", "2000"))
 
 
