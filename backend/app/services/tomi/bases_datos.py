@@ -328,6 +328,20 @@ def cartera_de_asesor(
     }
 
 
+def _rel_first_name(rel: Any) -> Optional[str]:
+    """Nombre del primer item de una relation Notion, tolerante a
+    list[dict] (con 'name'), list[str] (page id o nombre) o None.
+    Evita 'str' object has no attribute 'get' cuando la relation trae strings."""
+    if not rel:
+        return None
+    first = rel[0] if isinstance(rel, list) else rel
+    if isinstance(first, dict):
+        return first.get("name")
+    if isinstance(first, str):
+        return first
+    return None
+
+
 def consultar(
     mensaje: str = "",
     emails: Optional[List[str]] = None,
@@ -603,7 +617,7 @@ def consultar(
                         "estado": e_.get("Estado"),
                         "fecha_emision": (e_.get("Fecha de Emisión") or {}).get("start"),
                         "url": e_.get("_url"),
-                        "asesor": (e_.get("Asesor") or [{}])[0].get("name") if e_.get("Asesor") else None,
+                        "asesor": _rel_first_name(e_.get("Asesor")),
                         "correo_asesor": e_.get("Correo Asesor"),
                         "telefono_cliente": e_.get("Teléfono Cliente"),
                         "producto": e_.get("Producto (nombre)"),
@@ -618,11 +632,14 @@ def consultar(
                     if not exp.get("asesor") and exp["emisiones"]:
                         primer = next((e_ for e_ in emis if e_.get("Asesor")), None)
                         if primer:
-                            asesor_rel = (primer.get("Asesor") or [{}])[0]
+                            _rel = primer.get("Asesor") or []
+                            asesor_rel = _rel[0] if isinstance(_rel, list) and _rel else {}
+                            if not isinstance(asesor_rel, dict):
+                                asesor_rel = {}
                             exp["asesor"] = {
                                 "_id": asesor_rel.get("id"),
                                 "_url": asesor_rel.get("url"),
-                                "Nombre Completo": asesor_rel.get("name"),
+                                "Nombre Completo": asesor_rel.get("name") or _rel_first_name(_rel),
                                 "Correo": primer.get("Correo Asesor"),
                                 "_source": "from_emision",
                             }
@@ -765,8 +782,12 @@ def consultar(
     renovaciones: List[Dict[str, Any]] = []
     siniestros: List[Dict[str, Any]] = []
     comisiones: List[Dict[str, Any]] = []
+    # OJO: `usuarios` se reasignó arriba a una LISTA (línea ~685). El dict original
+    # keyed-by-email vive en `usuarios_map`. Usar la lista acá disparaba
+    # AttributeError: 'list' object has no attribute 'items' cuando el usuario
+    # estaba identificado por email (lookup por email, no por póliza).
     email_ase_filtro = email_asesor or next(
-        (e for e, u in (usuarios or {}).items()
+        (e for e, u in (usuarios_map or {}).items()
          if isinstance(u, dict) and u.get("tipo") == "asesor"), None)
 
     def _fetch_cat(fn, con_asesor: bool):
