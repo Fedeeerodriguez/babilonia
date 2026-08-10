@@ -57,8 +57,31 @@ def _norm_encargado(v: Optional[str]) -> Optional[str]:
     return None
 
 
+def _strip_prefijos(texto: str) -> str:
+    """Quita prefijos tipo '[Yans] ' (uno o varios) al inicio. La descripción que llega
+    de n8n suele venir con '[Encargado]' adelante, y al anteponer otro se duplicaba
+    ('[Yans] [Yans] ...'). Además el encargado ya vive en la columna 'Asignado a'."""
+    return re.sub(r"^(?:\s*\[[^\]]{1,24}\]\s*)+", "", texto or "").strip()
+
+
+def _titulo_corto(asunto: Optional[str], descripcion: str, enc: Optional[str]) -> str:
+    """Nombre del ticket = resumen CORTO del problema, no la descripción entera (que
+    igual se guarda completa en el campo 'Descripción'). Evita que la vista se sature.
+
+    Prioriza `asunto` (resumen breve que puede mandar el LLM). Si no viene, toma la
+    primera oración de la descripción. Limpia prefijos '[Encargado]' y acota a ~60
+    chars. Antepone un ÚNICO '[Encargado]' para escaneo rápido."""
+    base = _strip_prefijos(asunto) if asunto else ""
+    if not base:
+        desc = _strip_prefijos(descripcion)
+        base = re.split(r"(?<=[.!?])\s+", desc, maxsplit=1)[0]
+    base = re.sub(r"\s+", " ", base).strip()[:60].rstrip(" ,;:.-")
+    return f"[{enc}] {base}" if enc else (base or "Ticket sin descripción")
+
+
 def crear_ticket(
     descripcion: str,
+    asunto: Optional[str] = None,
     encargado: Optional[str] = None,
     nombre_cliente: Optional[str] = None,
     email: Optional[str] = None,
@@ -83,13 +106,14 @@ def crear_ticket(
     ticket_id = _gen_ticket_id()
     enc = _norm_encargado(encargado)
 
-    # Título: "[Encargado] primeras palabras de la descripción"
-    resumen = re.sub(r"\s+", " ", descripcion)[:80]
-    titulo = f"[{enc}] {resumen}" if enc else resumen
+    # Título = resumen corto (no la descripción entera). El detalle completo va aparte
+    # en el campo "Descripción". Evita el "[Yans] [Yans] <texto larguísimo>".
+    titulo = _titulo_corto(asunto, descripcion, enc)
+    desc_body = _strip_prefijos(descripcion) or descripcion
 
     props: Dict[str, Any] = {
         "Nombre": {"title": [{"text": {"content": titulo}}]},
-        "Descripción": {"rich_text": [{"text": {"content": descripcion[:1900]}}]},
+        "Descripción": {"rich_text": [{"text": {"content": desc_body[:1900]}}]},
         "TICKET ID": {"rich_text": [{"text": {"content": ticket_id}}]},
         "Estado": {"status": {"name": "Por hacer"}},
     }

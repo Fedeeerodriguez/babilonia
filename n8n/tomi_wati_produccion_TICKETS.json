@@ -947,6 +947,10 @@
               "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('descripcion', `Descripcion clara y completa del caso a escalar: que necesita el usuario, contexto, poliza/cliente/email relevante. REQUERIDO.`, 'string') }}"
             },
             {
+              "name": "asunto",
+              "value": "={{ $fromAI('asunto', `Resumen MUY corto del problema en 3-6 palabras, para el titulo del ticket. Ej: 'Pago no reflejado', 'Verificar acceso de alumno', 'Reagendar reunion'. REQUERIDO.`, 'string') }}"
+            },
+            {
               "name": "encargado",
               "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('encargado', `Admin al que se asigna: Ceci, Yans, Anayanci o Jime. Elegi segun el area del caso.`, 'string') }}"
             },

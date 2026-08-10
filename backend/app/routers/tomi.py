@@ -432,6 +432,11 @@ def memorias_agente_llm(
 
 class CrearTicketIn(BaseModel):
     descripcion: str = Field(..., description="Descripción clara del caso (1-3 oraciones).")
+    asunto: Optional[str] = Field(
+        default=None,
+        description="Resumen MUY corto del problema (3-6 palabras) para el título del "
+                    "ticket. Ej: 'Pago no reflejado', 'Verificar acceso de alumno'. Si "
+                    "no se manda, se resume desde la descripción.")
     encargado: Optional[str] = Field(
         default=None, description="Admin que atiende: Ceci | Yans | Anayanci | Jime")
     nombre_cliente: Optional[str] = None
@@ -460,6 +465,7 @@ def crear_ticket(
         return {"ok": False, "pausado": True, "error": "automatización en pausa"}
     return tk.crear_ticket(
         descripcion=body.descripcion,
+        asunto=body.asunto,
         encargado=body.encargado,
         nombre_cliente=body.nombre_cliente,
         email=body.email,
