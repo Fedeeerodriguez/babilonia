@@ -212,7 +212,8 @@
       "parameters": {
         "sessionIdType": "customKey",
         "sessionKey": "=string({{ $('Edit Fields1').first().json.message.chat.id }})",
-        "tableName": "n8n_chat_histories_agent"
+        "tableName": "n8n_chat_histories_agent",
+        "contextWindowLength": 15
       },
       "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
       "typeVersion": 1.3,
