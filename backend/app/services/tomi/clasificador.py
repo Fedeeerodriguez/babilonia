@@ -130,6 +130,46 @@ def clasificar(
     email_norm = (email or "").strip().lower() or extraer_email(mensaje_usuario or "")
 
     if not email_norm:
+        # B.1) Identificar por TELÉFONO: el user_id ES el waId de WhatsApp. Muchos
+        # usuarios reales (asesores/alumnos recurrentes) nunca escriben su correo —
+        # sólo mandan mensajes operativos. Si su número está en Notion, los ubicamos
+        # sin pedir nada y persistimos la identidad para los próximos mensajes.
+        if user_id and not force:
+            try:
+                bucket = nc.clasificar_usuario_por_telefono(str(user_id))
+            except Exception:
+                bucket = {"tipo": "prospecto", "data": None}
+            tipo = bucket.get("tipo")
+            if tipo and tipo != "prospecto":
+                data = bucket.get("data") if isinstance(bucket.get("data"), dict) else {}
+                email_rec = (data.get("Correo") or "").strip().lower()
+                nombre_rec = (
+                    data.get("Nombre Completo")
+                    or data.get("Nombre completo")
+                    or data.get("Nombre del Cliente")
+                    or data.get("_title")
+                )
+                notion_page_id = data.get("id") or data.get("_id")
+                guardar_clasificacion(
+                    db,
+                    user_id=str(user_id),
+                    email=email_rec,
+                    comando_1="registrado",
+                    comando_2=tipo,
+                    user_nombre=user_nombre or nombre_rec,
+                    notion_page_id=notion_page_id,
+                    data=data or None,
+                )
+                return {
+                    "comando_1": "registrado",
+                    "comando_2": tipo,
+                    "email": email_rec or None,
+                    "user_id": user_id,
+                    "user_nombre": user_nombre or nombre_rec,
+                    "fuente": "notion_telefono",
+                    "data": data or None,
+                }
+
         # Aún no sabemos quién es: NO asumir prospecto. Señalamos que falta el email
         # para que Tomi lo pida antes de responder. No se cachea (no sabemos quién es).
         resultado = {"comando_1": "no registrado", "comando_2": "desconocido",

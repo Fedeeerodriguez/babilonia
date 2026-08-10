@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from typing import Any, Dict, List, Optional
 
 from notion_client import Client
@@ -1213,6 +1214,83 @@ def clasificar_usuario_por_email(email: str) -> Dict[str, Any]:
         if rows:
             return {"tipo": tipo, "data": rows[0]}
     return {"tipo": "prospecto", "data": None}
+
+
+# ──────────── Identificación por TELÉFONO (waId de WhatsApp) ────────────
+# Muchos usuarios reales (asesores/alumnos recurrentes) nunca escriben su correo:
+# sólo mandan mensajes operativos. Como el user_id que llega de n8n ES el número de
+# WhatsApp (waId), podemos identificarlos directamente contra el campo "Teléfono" de
+# Notion — sin pedirles el correo. Match por los últimos 10 dígitos (núcleo nacional)
+# para tolerar prefijos +52 / 521 / lada y el "1" de celular mexicano.
+
+def tel_core(phone: Optional[str]) -> str:
+    """Últimos 10 dígitos del teléfono. Robusto a +52, 521, lada, espacios."""
+    digits = re.sub(r"\D", "", phone or "")
+    return digits[-10:] if len(digits) >= 10 else ""
+
+
+def buscar_asesor_por_telefono(core: str) -> List[Dict[str, Any]]:
+    if not core:
+        return []
+    return _query(DB_ASESORES, {"property": "Teléfono", "phone_number": {"contains": core}})
+
+
+def buscar_estudiante_por_telefono(core: str) -> List[Dict[str, Any]]:
+    if not core:
+        return []
+    return _query(DB_ESTUDIANTES, {"property": "Teléfono", "phone_number": {"contains": core}})
+
+
+def buscar_cliente_por_telefono(core: str) -> List[Dict[str, Any]]:
+    if not core:
+        return []
+    return _query(DB_CLIENTES, {"property": "Teléfono", "rich_text": {"contains": core}})
+
+
+def clasificar_usuario_por_telefono(phone: str) -> Dict[str, Any]:
+    """Identifica al usuario por su número de WhatsApp contra Notion.
+
+    Devuelve {tipo, data}, tipo ∈ asesor|estudiante|cliente|prospecto. Las 3
+    búsquedas corren en paralelo (prioridad asesor > estudiante > cliente). El
+    resultado se cachea por núcleo telefónico para no re-consultar Notion en cada
+    mensaje de un mismo número (incluye el "no encontrado", TTL de la caché Notion).
+    """
+    core = tel_core(phone)
+    if len(core) < 10:
+        return {"tipo": "prospecto", "data": None}
+
+    ckey = f"cls_tel:{core}"
+    hit = notion_cache.get(ckey)
+    if hit is not None:
+        return hit
+
+    from concurrent.futures import ThreadPoolExecutor
+
+    fns = {
+        "asesor": buscar_asesor_por_telefono,
+        "estudiante": buscar_estudiante_por_telefono,
+        "cliente": buscar_cliente_por_telefono,
+    }
+    resultados: Dict[str, List[Dict[str, Any]]] = {}
+    with ThreadPoolExecutor(max_workers=3) as ex:
+        futs = {ex.submit(fn, core): tipo for tipo, fn in fns.items()}
+        for fut in futs:
+            tipo = futs[fut]
+            try:
+                resultados[tipo] = fut.result()
+            except Exception as e:  # noqa: BLE001
+                log.warning("clasif tel: fallo %s (%s): %s", tipo, type(e).__name__, e)
+                resultados[tipo] = []
+
+    resultado: Dict[str, Any] = {"tipo": "prospecto", "data": None}
+    for tipo in ("asesor", "estudiante", "cliente"):
+        rows = resultados.get(tipo) or []
+        if rows:
+            resultado = {"tipo": tipo, "data": rows[0]}
+            break
+
+    notion_cache.set(ckey, resultado)
+    return resultado
 
 
 # ──────────── DBs Allianz adicionales (curadas) ────────────
