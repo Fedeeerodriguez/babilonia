@@ -112,19 +112,26 @@ def clasificar(
       B) Sin email en el mensaje → "no registrado / prospecto".
       C) Buscar en Notion: asesores → estudiantes → clientes.
     """
-    # A) cache por user_id
+    # A) cache por user_id — SÓLO cortamos si ya hay un ROL REAL resuelto
+    # (asesor/estudiante/cliente). Un 'prospecto'/'desconocido' cacheado NO corta el
+    # flujo: el usuario pudo dar un email nuevo, o su teléfono ya puede resolver contra
+    # Notion. Si no cortáramos acá, alguien clasificado prospecto en una sesión vieja
+    # quedaría "pegado" como prospecto para siempre (bug real observado en producción).
+    cache_previa: Optional[Dict[str, Any]] = None
     if not force and user_id:
         cached = buscar_cache(db, user_id=str(user_id), email=None)
         if cached:
-            return {
-                "comando_1": cached["comando_1"],
-                "comando_2": cached["comando_2"],
-                "email": cached["email"],
-                "user_id": cached["user_id"],
-                "user_nombre": cached.get("user_nombre"),
-                "fuente": "cache",
-                "data": cached.get("data"),
-            }
+            if cached.get("comando_2") in ("asesor", "estudiante", "cliente"):
+                return {
+                    "comando_1": cached["comando_1"],
+                    "comando_2": cached["comando_2"],
+                    "email": cached["email"],
+                    "user_id": cached["user_id"],
+                    "user_nombre": cached.get("user_nombre"),
+                    "fuente": "cache",
+                    "data": cached.get("data"),
+                }
+            cache_previa = cached  # prospecto/desconocido: fallback si no logramos mejorar
 
     # B) extraer email del mensaje si no vino explícito
     email_norm = (email or "").strip().lower() or extraer_email(mensaje_usuario or "")
@@ -170,8 +177,22 @@ def clasificar(
                     "data": data or None,
                 }
 
-        # Aún no sabemos quién es: NO asumir prospecto. Señalamos que falta el email
-        # para que Tomi lo pida antes de responder. No se cachea (no sabemos quién es).
+        # B.2) Si ya lo conocíamos (aunque fuera como prospecto), mantenemos esa
+        # clasificación en vez de volver a pedirle el correo — no lo pesteamos. Si más
+        # adelante da un email, la rama C/D lo re-clasifica y actualiza la caché.
+        if cache_previa:
+            return {
+                "comando_1": cache_previa.get("comando_1") or "registrado",
+                "comando_2": cache_previa.get("comando_2") or "prospecto",
+                "email": cache_previa.get("email"),
+                "user_id": user_id,
+                "user_nombre": user_nombre or cache_previa.get("user_nombre"),
+                "fuente": "cache",
+                "data": cache_previa.get("data"),
+            }
+
+        # Usuario nuevo del que no sabemos nada: NO asumir prospecto. Señalamos que
+        # falta el email para que Tomi lo pida. No se cachea (no sabemos quién es).
         resultado = {"comando_1": "no registrado", "comando_2": "desconocido",
                      "email": None, "user_id": user_id, "user_nombre": user_nombre,
                      "fuente": "sin_email", "necesita_email": True, "data": None}
