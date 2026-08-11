@@ -282,6 +282,24 @@ def renderizar(resultado: Dict[str, Any]) -> str:
     lines.append(f"- Tiempo total: `{stats.get('tiempo_ms', 0)} ms` | Queries Notion: `{stats.get('queries_notion', 0)}`")
     lines.append("")
 
+    # MI REUNIÓN / LA LIGA (link de Zoom del evento de Calendly del usuario).
+    # Va ARRIBA de todo: si el usuario pidió "la liga"/link/reunión, esto es lo que
+    # tiene que responder Tomi (dale el link_zoom y la fecha; NO pidas que aclare).
+    reuniones = resultado.get("mi_reunion") or []
+    if reuniones:
+        lines.append(f"## Reunión agendada del usuario ({len(reuniones)}) — dale el LINK DE ZOOM")
+        for r in reuniones:
+            lines.append(
+                f"- **{_safe(r.get('evento'))}** — invitado: `{_safe(r.get('invitado'))}` | "
+                f"Fecha/hora: `{_safe(r.get('fecha'))}` | Estado: `{_safe(r.get('estado'))}`"
+            )
+            lines.append(f"  - **Liga/Link de Zoom: {_safe(r.get('link_zoom'))}**")
+            if r.get("link_reagendar"):
+                lines.append(f"  - Link para reagendar: {_safe(r.get('link_reagendar'))}")
+            if r.get("asesor"):
+                lines.append(f"  - Asesor: `{_safe(r.get('asesor'))}`")
+        lines.append("")
+
     # Usuarios
     usuarios = resultado.get("usuarios") or []
     if usuarios:

@@ -259,8 +259,12 @@ def _tools_schema() -> List[Dict[str, Any]]:
     ]
 
 
-def _dispatch(name: str, args: Dict[str, Any]) -> Any:
-    """Ejecuta una tool por nombre y devuelve resultado serializable."""
+def _dispatch(name: str, args: Dict[str, Any], wa_id: Optional[str] = None) -> Any:
+    """Ejecuta una tool por nombre y devuelve resultado serializable.
+
+    `wa_id` (número de WhatsApp del usuario) se inyecta desde el backend — el LLM no
+    lo conoce — para poder ubicar la reunión/liga de Zoom del usuario en Calendly por
+    su teléfono, incluso si es un prospecto sin correo."""
     if name == "consultar_bases":
         return bd.consultar(
             mensaje=args.get("mensaje", ""),
@@ -275,6 +279,7 @@ def _dispatch(name: str, args: Dict[str, Any]) -> Any:
             solo_activas=bool(args.get("solo_activas") or False),
             limite=int(args.get("limite") or 100),
             filtro_estado=args.get("filtro_estado"),
+            telefono=wa_id,
         )
     if name == "expandir_pagina":
         return nc._resolve_page_full(args.get("page_id", ""))
@@ -403,7 +408,7 @@ def responder(
                 args = {}
             log.info("tool: %s args=%s", tc.function.name, args)
             try:
-                result = _dispatch(tc.function.name, args)
+                result = _dispatch(tc.function.name, args, wa_id=wa_id)
             except Exception as e:
                 log.error("dispatch falló: %s", e)
                 result = {"error": str(e)}

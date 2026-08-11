@@ -48,7 +48,9 @@ KEYWORDS_COMISION = ("comision", "comisiones", "comicion", "comiciones", "cuanto
 # Bonos / puntos / convencion: conceptos del PROGRAMA DE ASESORES (no aplican a clientes).
 KEYWORDS_BONO = ("bono", "bonos", "vono", "puntos", "convencion", "mes 13", "promotoria",
                  "puntos de convencion", "premio")
-KEYWORDS_CALENDLY = ("turno", "agenda", "agendar", "ajendar", "reunion", "reunuon", "cita", "calendly")
+KEYWORDS_CALENDLY = ("turno", "agenda", "agendar", "ajendar", "reunion", "reunuon", "cita",
+                     "calendly", "liga", "link", "linke", "enlace", "zoom", "zum", "junta",
+                     "sesion", "sesión", "videollamada", "llamada", "conexion", "conexión")
 KEYWORDS_COBRANZA = ("cobranza", "covranza", "pago", "pagar", "saldo", "adeudo", "cuota",
                      "vencimiento", "vencimineto", "bencimiento", "debo", "devo", "atraso",
                      "atrazo", "al corriente", "al dia")
@@ -356,6 +358,7 @@ def consultar(
     solo_activas: bool = False,
     limite: int = 100,
     filtro_estado: Optional[str] = None,
+    telefono: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Orquesta las búsquedas en paralelo y devuelve el JSON estructurado.
 
@@ -830,6 +833,44 @@ def consultar(
             })
 
     elapsed = int((time.time() - t0) * 1000)
+    # MI REUNIÓN / LA LIGA: si el usuario pregunta por su reunión/cita/liga/link/zoom,
+    # buscamos su evento de Calendly por TELÉFONO (waId) y/o correo del invitado, y
+    # devolvemos el link de Zoom (Ubicación del Evento). Cubre a PROSPECTOS, que no
+    # están en la base de clientes pero sí figuran como invitados en Calendly.
+    mi_reunion: List[Dict[str, Any]] = []
+    if intents.get("calendly") and (telefono or emails_uniq):
+        try:
+            crudos: List[Dict[str, Any]] = []
+            if telefono:
+                queries_count += 1
+                crudos.extend(nc.buscar_calendly_por_telefono(telefono))
+            for em in emails_uniq:
+                queries_count += 1
+                crudos.extend(nc.buscar_calendly_por_correo(em))
+            vistos: set = set()
+            for e in crudos:
+                eid = e.get("_id")
+                if eid in vistos:
+                    continue
+                vistos.add(eid)
+                fecha = e.get("Fecha de Evento") or {}
+                mi_reunion.append({
+                    "evento": e.get("Evento ") or e.get("Tipo de Evento"),
+                    "invitado": e.get("Nombre del invitado"),
+                    "fecha": fecha.get("start") if isinstance(fecha, dict) else fecha,
+                    "estado": e.get("Estado"),
+                    "link_zoom": e.get("Ubicación del Evento"),
+                    "link_reagendar": e.get("Link para Reagendar"),
+                    "correo_invitado": e.get("Correo invitado"),
+                    "telefono": e.get("Teléfono"),
+                    "asesor": e.get("Nombre de Asesor"),
+                    "url": e.get("_url"),
+                })
+            # los más recientes/futuros primero
+            mi_reunion.sort(key=lambda x: (x.get("fecha") or ""), reverse=True)
+        except Exception as e:
+            log.error("mi_reunion (calendly por telefono/correo) falló: %s", e)
+
     return {
         "renovaciones": renovaciones,
         "siniestros": siniestros,
@@ -838,6 +879,7 @@ def consultar(
         "emisiones": emisiones,
         "cobranzas": cobranzas,
         "daf": daf,
+        "mi_reunion": mi_reunion,
         "tickets_allianz": results.get("tickets_allianz", []) or [],
         "calendly": results.get("calendly", []) or [],
         "clientes_por_nombre": results.get("clientes_por_nombre", []) or [],
