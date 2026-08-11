@@ -1247,6 +1247,23 @@ def buscar_cliente_por_telefono(core: str) -> List[Dict[str, Any]]:
     return _query(DB_CLIENTES, {"property": "Teléfono", "rich_text": {"contains": core}})
 
 
+def buscar_calendly_por_telefono(phone: str) -> List[Dict[str, Any]]:
+    """Eventos de Calendly cuyo campo 'Teléfono' (del invitado) coincide con el número.
+    Sirve para prospectos/clientes que piden 'la liga'/link de su reunión de Zoom."""
+    core = tel_core(phone)
+    if len(core) < 10:
+        return []
+    return _query(DB_EVENTOS_CALENDLY, {"property": "Teléfono", "phone_number": {"contains": core}})
+
+
+def buscar_calendly_por_correo(email: str) -> List[Dict[str, Any]]:
+    """Eventos de Calendly por 'Correo invitado'."""
+    if not email:
+        return []
+    return _query(DB_EVENTOS_CALENDLY,
+                  {"property": "Correo invitado", "rich_text": {"contains": email.strip().lower()}})
+
+
 def clasificar_usuario_por_telefono(phone: str) -> Dict[str, Any]:
     """Identifica al usuario por su número de WhatsApp contra Notion.
 
