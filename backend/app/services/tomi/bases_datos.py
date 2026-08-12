@@ -50,7 +50,11 @@ KEYWORDS_BONO = ("bono", "bonos", "vono", "puntos", "convencion", "mes 13", "pro
                  "puntos de convencion", "premio")
 KEYWORDS_CALENDLY = ("turno", "agenda", "agendar", "ajendar", "reunion", "reunuon", "cita",
                      "calendly", "liga", "link", "linke", "enlace", "zoom", "zum", "junta",
-                     "sesion", "sesión", "videollamada", "llamada", "conexion", "conexión")
+                     "sesion", "sesión", "videollamada", "llamada", "conexion", "conexión",
+                     # asesor/cerrador del cliente (viven en el evento de Calendly)
+                     "mi asesor", "quien es mi asesor", "cerrador", "quien me atiende",
+                     "quien me va a atender", "quien me contacta", "quien me va a contactar",
+                     "quien me va a llamar", "con quien tengo", "con quien es")
 KEYWORDS_COBRANZA = ("cobranza", "covranza", "pago", "pagar", "saldo", "adeudo", "cuota",
                      "vencimiento", "vencimineto", "bencimiento", "debo", "devo", "atraso",
                      "atrazo", "al corriente", "al dia")
@@ -524,7 +528,11 @@ def consultar(
         except Exception as e:
             log.error("fallback cliente->asesor falló: %s", e)
 
-    if "calendly" in incluir_set:
+    # OJO: la búsqueda general de Calendly SOLO corre si hay un filtro real
+    # (nombre de cliente o asesor). Sin filtro, buscar_calendly_batch devuelve TODOS
+    # los eventos (fuga de datos de terceros + ruido). El evento propio del usuario ya
+    # lo cubre `mi_reunion` (por teléfono/correo del invitado).
+    if "calendly" in incluir_set and (clientes_uniq or asesor_ids):
         try:
             queries_count += 1
             results["calendly"] = nc.buscar_calendly_batch(
@@ -863,7 +871,13 @@ def consultar(
                     "link_reagendar": e.get("Link para Reagendar"),
                     "correo_invitado": e.get("Correo invitado"),
                     "telefono": e.get("Teléfono"),
+                    # Asesor y Cerrador del cliente (vienen en el evento de Calendly)
                     "asesor": e.get("Nombre de Asesor"),
+                    "asesor_correo": e.get("Correo Asesor"),
+                    "asesor_telefono": e.get("Teléfono Asesor"),
+                    "cerrador": e.get("Nombre de Cerrador") or e.get("Cerrador"),
+                    "cerrador_correo": e.get("Correo Cerrador"),
+                    "cerrador_telefono": e.get("Teléfono Cerrador"),
                     "url": e.get("_url"),
                 })
             # los más recientes/futuros primero
