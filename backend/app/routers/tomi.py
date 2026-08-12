@@ -477,6 +477,55 @@ def crear_ticket(
     )
 
 
+class RegistrarDifusionIn(BaseModel):
+    wa_id: str = Field(..., description="Número de WhatsApp del destinatario (waId), ej '5218714100519'.")
+    texto: str = Field(..., description="Contenido/resumen del mensaje de difusión que se le envió.")
+    titulo: Optional[str] = Field(default=None, description="Nombre de la campaña/plantilla, opcional. Ej 'Promo Agosto'.")
+
+
+@router.post("/registrar-difusion")
+def registrar_difusion(
+    body: RegistrarDifusionIn,
+    x_tomi_key: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    """Registra un mensaje de DIFUSIÓN/campaña (WATI/Meta) en la MISMA memoria del
+    agente para ese número, para que Tommy tenga el contexto cuando el usuario pregunte.
+
+    Inserta una fila en `n8n_chat_histories_agent` con el formato que usa el agente
+    (type='ai'), llaveada por `string(<waId>)`, marcada como mensaje automático.
+    Llamá a este endpoint desde tu pipeline de disparos (n8n / webhook de WATI / código).
+    """
+    _auth(x_tomi_key)
+    import json as _json
+    from sqlalchemy import text
+    wa = "".join(ch for ch in (body.wa_id or "") if ch.isdigit())
+    if not wa:
+        return {"ok": False, "error": "wa_id inválido"}
+    session_id = f"string({wa})"
+    etiqueta = f" — {body.titulo.strip()}" if body.titulo else ""
+    content = f"[MENSAJE AUTOMÁTICO QUE LE ENVIAMOS AL USUARIO{etiqueta}]: {body.texto.strip()}"
+    message = {
+        "type": "ai",
+        "content": content,
+        "tool_calls": [],
+        "additional_kwargs": {"difusion": True},
+        "response_metadata": {},
+        "invalid_tool_calls": [],
+    }
+    try:
+        row = db.execute(text(
+            "INSERT INTO n8n_chat_histories_agent (session_id, message) "
+            "VALUES (:sid, CAST(:msg AS jsonb)) RETURNING id"
+        ), {"sid": session_id, "msg": _json.dumps(message, ensure_ascii=False)})
+        new_id = row.scalar()
+        db.commit()
+        return {"ok": True, "id": new_id, "session_id": session_id}
+    except Exception as e:  # noqa: BLE001
+        db.rollback()
+        return {"ok": False, "error": str(e)}
+
+
 @router.get("/memorias/categorias")
 def memorias_categorias(
     db: Session = Depends(get_docs_db),
