@@ -287,7 +287,7 @@ def renderizar(resultado: Dict[str, Any]) -> str:
     # tiene que responder Tomi (dale el link_zoom y la fecha; NO pidas que aclare).
     reuniones = resultado.get("mi_reunion") or []
     if reuniones:
-        lines.append(f"## Reunión agendada del usuario ({len(reuniones)}) — dale el LINK DE ZOOM")
+        lines.append(f"## Reunión del usuario — link de Zoom, ASESOR y CERRADOR ({len(reuniones)})")
         for r in reuniones:
             lines.append(
                 f"- **{_safe(r.get('evento'))}** — invitado: `{_safe(r.get('invitado'))}` | "
@@ -296,8 +296,19 @@ def renderizar(resultado: Dict[str, Any]) -> str:
             lines.append(f"  - **Liga/Link de Zoom: {_safe(r.get('link_zoom'))}**")
             if r.get("link_reagendar"):
                 lines.append(f"  - Link para reagendar: {_safe(r.get('link_reagendar'))}")
-            if r.get("asesor"):
-                lines.append(f"  - Asesor: `{_safe(r.get('asesor'))}`")
+            # Asesor y Cerrador del cliente (dato pedido: vive en el evento de Calendly)
+            if r.get("asesor") or r.get("asesor_correo") or r.get("asesor_telefono"):
+                lines.append(
+                    f"  - **Asesor del cliente:** `{_safe(r.get('asesor'))}`"
+                    f" | correo: `{_safe(r.get('asesor_correo'))}`"
+                    f" | tel: `{_safe(r.get('asesor_telefono'))}`"
+                )
+            if r.get("cerrador") or r.get("cerrador_correo") or r.get("cerrador_telefono"):
+                lines.append(
+                    f"  - **Cerrador del cliente:** `{_safe(r.get('cerrador'))}`"
+                    f" | correo: `{_safe(r.get('cerrador_correo'))}`"
+                    f" | tel: `{_safe(r.get('cerrador_telefono'))}`"
+                )
         lines.append("")
 
     # Usuarios
