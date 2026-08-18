@@ -112,29 +112,36 @@ def clasificar(
       B) Sin email en el mensaje → "no registrado / prospecto".
       C) Buscar en Notion: asesores → estudiantes → clientes.
     """
-    # A) cache por user_id — SÓLO cortamos si ya hay un ROL REAL resuelto
-    # (asesor/estudiante/cliente). Un 'prospecto'/'desconocido' cacheado NO corta el
-    # flujo: el usuario pudo dar un email nuevo, o su teléfono ya puede resolver contra
-    # Notion. Si no cortáramos acá, alguien clasificado prospecto en una sesión vieja
-    # quedaría "pegado" como prospecto para siempre (bug real observado en producción).
+    # Extraemos el email ANTES de mirar el caché, para detectar si el usuario está
+    # dando un email NUEVO (distinto al que teníamos cacheado para su número).
+    email_norm = (email or "").strip().lower() or extraer_email(mensaje_usuario or "")
+
+    # A) caché por user_id. Cortamos con la identidad cacheada SÓLO si:
+    #    - NO viene un email nuevo distinto al cacheado, y
+    #    - ya hay un ROL REAL resuelto (asesor/estudiante/cliente).
+    # Si el usuario da un email NUEVO y DISTINTO al cacheado, NO confiamos en el caché:
+    # re-clasificamos con ese email. Evita quedar "pegado" a una identidad vieja del
+    # mismo número (bug + riesgo de privacidad). Un 'prospecto' cacheado tampoco corta:
+    # puede mejorar por email o teléfono.
     cache_previa: Optional[Dict[str, Any]] = None
     if not force and user_id:
         cached = buscar_cache(db, user_id=str(user_id), email=None)
         if cached:
-            if cached.get("comando_2") in ("asesor", "estudiante", "cliente"):
-                return {
-                    "comando_1": cached["comando_1"],
-                    "comando_2": cached["comando_2"],
-                    "email": cached["email"],
-                    "user_id": cached["user_id"],
-                    "user_nombre": cached.get("user_nombre"),
-                    "fuente": "cache",
-                    "data": cached.get("data"),
-                }
-            cache_previa = cached  # prospecto/desconocido: fallback si no logramos mejorar
-
-    # B) extraer email del mensaje si no vino explícito
-    email_norm = (email or "").strip().lower() or extraer_email(mensaje_usuario or "")
+            cached_email = (cached.get("email") or "").strip().lower()
+            da_email_nuevo = bool(email_norm and email_norm != cached_email)
+            if not da_email_nuevo:
+                if cached.get("comando_2") in ("asesor", "estudiante", "cliente"):
+                    return {
+                        "comando_1": cached["comando_1"],
+                        "comando_2": cached["comando_2"],
+                        "email": cached["email"],
+                        "user_id": cached["user_id"],
+                        "user_nombre": cached.get("user_nombre"),
+                        "fuente": "cache",
+                        "data": cached.get("data"),
+                    }
+                cache_previa = cached  # prospecto/desconocido: fallback si no mejoramos
+            # si da_email_nuevo: seguimos de largo y re-clasificamos con email_norm
 
     if not email_norm:
         # B.1) Identificar por TELÉFONO: el user_id ES el waId de WhatsApp. Muchos
