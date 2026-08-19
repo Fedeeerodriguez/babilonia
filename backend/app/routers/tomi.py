@@ -371,6 +371,15 @@ def calendly(body: CalendlyIn, x_tomi_key: Optional[str] = Header(default=None))
 class BasesDatosIn(BaseModel):
     mensaje: str = ""
     wa_id: Optional[str] = None
+
+    @field_validator("wa_id", mode="before")
+    @classmethod
+    def _coerce_wa_id(cls, v):
+        # n8n manda el waId como número; lo aceptamos y lo pasamos a string.
+        if v is None:
+            return v
+        return str(v)
+
     emails: Optional[List[str]] = None
     polizas: Optional[List[str]] = None
     clientes: Optional[List[str]] = Field(default=None, description="Nombres de clientes (no emails)")
@@ -423,6 +432,16 @@ class AgenteIn(BaseModel):
     historial: Optional[List[HistMsg]] = None
     wa_id: Optional[str] = None
     max_iter: int = 5
+
+    @field_validator("wa_id", mode="before")
+    @classmethod
+    def _coerce_wa_id(cls, v):
+        # n8n manda el waId como NÚMERO (5492954407096). Pydantic v2 rechazaría
+        # un int para un campo str con 422 → el tool de n8n falla y el agente
+        # responde "inconveniente técnico". Lo aceptamos y lo pasamos a string.
+        if v is None:
+            return v
+        return str(v)
 
 
 @router.post("/agente")
