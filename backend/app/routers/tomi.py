@@ -35,6 +35,34 @@ class TomiSafeRoute(APIRoute):
         original = super().get_route_handler()
 
         async def handler(request: Request) -> Response:
+            # Reparar body mal encodeado ANTES de parsear. Algunos nodos de n8n
+            # mandan el JSON con acentos como bytes latin-1 (no UTF-8). Eso hacía
+            # explotar el request a OpenAI con "400: error parsing the body" y el
+            # agente respondía "inconveniente técnico" en casi toda consulta con
+            # acentos (información, póliza, reunión...). Si los bytes NO son UTF-8
+            # válido, los reinterpretamos como latin-1 y re-encodeamos a UTF-8
+            # (recupera el acento) y reinyectamos el body para el parseo posterior.
+            if request.method in ("POST", "PUT", "PATCH"):
+                try:
+                    raw = await request.body()
+                except Exception:  # noqa: BLE001
+                    raw = b""
+                if raw:
+                    try:
+                        raw.decode("utf-8")
+                    except UnicodeDecodeError:
+                        try:
+                            fixed = raw.decode("latin-1").encode("utf-8")
+                        except Exception:  # noqa: BLE001
+                            fixed = raw.decode("utf-8", "replace").encode("utf-8")
+
+                        async def _receive() -> Dict[str, Any]:
+                            return {"type": "http.request", "body": fixed, "more_body": False}
+
+                        request._body = fixed          # cache de Starlette
+                        request._receive = _receive     # stream para el parser
+                        log.warning("Body no-UTF8 reparado en %s (%d bytes)",
+                                    request.url.path, len(raw))
             try:
                 return await original(request)
             except (HTTPException, RequestValidationError):
