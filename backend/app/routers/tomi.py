@@ -73,6 +73,33 @@ router = APIRouter(prefix="/api/tomi", tags=["tomi"], route_class=TomiSafeRoute)
 INTERNAL_KEY = os.getenv("TOMI_INTERNAL_KEY", "")
 
 
+def _clean_utf8(s: Optional[str]) -> Optional[str]:
+    """Repara texto que llega mal encodeado y garantiza UTF-8 válido.
+
+    Algunos nodos de n8n mandan el `mensaje` con acentos como bytes latin-1
+    (no UTF-8). El parser tolerante de FastAPI/Pydantic los deja pasar como
+    surrogates, pero después el request a OpenAI explota con
+    "400: There was an error parsing the body" → el agente responde
+    "inconveniente técnico". Acá saneamos ANTES de tocar el LLM.
+
+    - Si ya es UTF-8 válido → se devuelve intacto (caso normal).
+    - Si trae surrogates → se intenta recuperar el texto real; si no se puede,
+      se reemplazan los bytes inválidos para que NUNCA rompa el request.
+    """
+    if not s:
+        return s
+    try:
+        s.encode("utf-8")
+        return s  # ya es UTF-8 válido, no tocar
+    except UnicodeEncodeError:
+        try:
+            # recuperar bytes originales y redecodificar como UTF-8 real
+            return s.encode("latin-1", "surrogateescape").decode("utf-8")
+        except Exception:
+            # último recurso: nunca romper — reemplazar lo inválido
+            return s.encode("utf-8", "replace").decode("utf-8")
+
+
 def _auth(x_tomi_key: Optional[str]) -> None:
     if not INTERNAL_KEY:
         # Si no esta seteada, dejamos pasar (dev). En prod, configurar.
@@ -379,9 +406,9 @@ def agente_llm(
     _auth(x_tomi_key)
     if not sw.is_enabled(db):  # defensa en profundidad: el agente mismo se niega
         return {"respuesta": "", "pausado": True, "error": "automatización en pausa"}
-    hist = [{"role": h.role, "content": h.content} for h in (body.historial or [])]
+    hist = [{"role": h.role, "content": _clean_utf8(h.content)} for h in (body.historial or [])]
     return ag.responder(
-        mensaje=body.mensaje,
+        mensaje=_clean_utf8(body.mensaje),
         historial=hist,
         wa_id=body.wa_id,
         max_iter=body.max_iter,
@@ -424,8 +451,8 @@ def memorias_agente_llm(
     _auth(x_tomi_key)
     if not sw.is_enabled(main_db):
         return {"respuesta": "", "pausado": True, "error": "automatización en pausa"}
-    hist = [{"role": h.role, "content": h.content} for h in (body.historial or [])]
-    return ag_mem.responder(db, mensaje=body.mensaje, historial=hist, max_iter=body.max_iter)
+    hist = [{"role": h.role, "content": _clean_utf8(h.content)} for h in (body.historial or [])]
+    return ag_mem.responder(db, mensaje=_clean_utf8(body.mensaje), historial=hist, max_iter=body.max_iter)
 
 
 # ---------- Creación de tickets (Notion, con asignación al admin) ----------
