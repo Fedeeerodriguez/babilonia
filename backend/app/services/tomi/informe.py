@@ -261,6 +261,52 @@ def _render_cartera(resultado: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _render_cartera_atraso(resultado: Dict[str, Any]) -> str:
+    """Renderer para modo=cartera_atraso: ranking de pólizas en atraso con titular."""
+    lines: List[str] = ["# Pólizas en atraso de la cartera — Tomi · Babilonia", ""]
+    lines.append(f"**Asesor:** `{_safe(resultado.get('asesor_email'))}`")
+    filas = resultado.get("polizas_en_atraso") or []
+    lines.append(
+        f"- **Pólizas en atraso:** {resultado.get('total_en_atraso', 0)} "
+        f"(de {resultado.get('total_polizas_revisadas', 0)} pólizas revisadas)"
+    )
+    tot = resultado.get("total_monto_faltante")
+    if tot:
+        try:
+            lines.append(f"- **Monto faltante total:** ${int(tot):,}")
+        except (TypeError, ValueError):
+            lines.append(f"- **Monto faltante total:** {tot}")
+    lines.append(f"- **Latencia:** {(resultado.get('stats') or {}).get('tiempo_ms', 0)} ms")
+    lines.append("")
+
+    if not filas:
+        lines.append(
+            "**No hay pólizas en atraso** en la cartera de este asesor "
+            "(o no hay cobranzas registradas para sus pólizas)."
+        )
+        return "\n".join(lines)
+
+    lines.append("## Ranking por días de atraso (más críticas primero)")
+    lines.append("")
+    for i, f in enumerate(filas, 1):
+        titular = _safe(f.get("titular"))
+        pol = _safe(f.get("poliza"))
+        dias = f.get("dias_de_atraso", 0)
+        partes = [f"**{i}. {titular}** — póliza `{pol}` — **{dias} días de atraso**"]
+        monto = f.get("monto_faltante")
+        if monto not in (None, "", 0):
+            partes.append(f"faltante: `{monto}`")
+        if f.get("proximo_cobro"):
+            partes.append(f"próx. cobro: `{f['proximo_cobro']}`")
+        if f.get("conducto"):
+            partes.append(f"conducto: `{f['conducto']}`")
+        if f.get("estado"):
+            partes.append(f"estado: `{f['estado']}`")
+        lines.append("- " + " · ".join(partes))
+    lines.append("")
+    return "\n".join(lines)
+
+
 def renderizar(resultado: Dict[str, Any]) -> str:
     """Genera markdown determinístico desde el resultado de bd.consultar().
 
@@ -269,6 +315,8 @@ def renderizar(resultado: Dict[str, Any]) -> str:
     # Renderer especial para modo cartera
     if resultado.get("modo") == "cartera":
         return _render_cartera(resultado)
+    if resultado.get("modo") == "cartera_atraso":
+        return _render_cartera_atraso(resultado)
 
     lines: List[str] = ["# Informe de bases de datos — Tomi · Babilonia", ""]
 
