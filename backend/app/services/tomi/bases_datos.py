@@ -334,6 +334,111 @@ def cartera_de_asesor(
     }
 
 
+_ATRASO_RE = re.compile(
+    r"(atras|vencid|mora|moros|deud|adeud|impag|debe[nr]?\b|d[ií]as? de atraso|"
+    r"cobros? atrasad|en mora)",
+    re.IGNORECASE,
+)
+
+
+def _pide_atraso(mensaje: Optional[str]) -> bool:
+    """True si el mensaje pide pólizas/clientes en atraso, con deuda o mora."""
+    return bool(mensaje and _ATRASO_RE.search(mensaje))
+
+
+def _norm_poliza(p: Any) -> str:
+    return re.sub(r"\s+", "", str(p or "")).upper()
+
+
+def cartera_en_atraso_de_asesor(email_asesor: str, limite: int = 200) -> Dict[str, Any]:
+    """Lista las pólizas EN ATRASO de la cartera de un asesor, con TITULAR,
+    ordenadas por días de atraso DESC (las más críticas primero).
+
+    Cruza Emisiones (titular por póliza) × Cobranzas (días de atraso VIVOS +
+    monto faltante). Solo devuelve las pólizas con atraso > 0.
+    """
+    t0 = time.time()
+    vacio = {
+        "modo": "cartera_atraso", "asesor_email": email_asesor or None,
+        "polizas_en_atraso": [], "total_en_atraso": 0, "total_polizas_revisadas": 0,
+        "total_monto_faltante": 0, "stats": {"tiempo_ms": 0},
+    }
+    if not email_asesor:
+        return vacio
+
+    emisiones = nc.emisiones_por_correo_asesor(email_asesor, page_size=200)
+
+    # Titular por número de póliza (normalizado); nos quedamos con un nombre no vacío.
+    titular_map: Dict[str, str] = {}
+    for e in emisiones:
+        num = (e.get("Número de Póliza") or "").strip()
+        if not num:
+            continue
+        key = _norm_poliza(num)
+        nombre = (e.get("Nombre Cliente") or e.get("_title") or "").strip()
+        if nombre and not titular_map.get(key):
+            titular_map[key] = nombre
+        elif key not in titular_map:
+            titular_map[key] = nombre
+
+    polizas_uniq = sorted({(e.get("Número de Póliza") or "").strip()
+                           for e in emisiones if (e.get("Número de Póliza") or "").strip()})
+
+    # Cobranzas en chunks (evita exceder los límites de filtro de Notion).
+    cobranzas: List[Dict[str, Any]] = []
+    CHUNK = 40
+    for i in range(0, len(polizas_uniq), CHUNK):
+        grupo = polizas_uniq[i:i + CHUNK]
+        try:
+            cobranzas.extend(nc.buscar_cobranzas_batch(grupo, page_size=100))
+        except Exception as ex:  # noqa: BLE001
+            log.error("buscar_cobranzas_batch (atraso) falló en chunk: %s", ex)
+
+    # Filas en atraso, dedupe por póliza (gana el mayor atraso).
+    por_poliza: Dict[str, Dict[str, Any]] = {}
+    for c in cobranzas:
+        r = nc._cobranza_resumen(c)
+        if not r["en_atraso"]:
+            continue
+        key = _norm_poliza(r["poliza"])
+        pc = (c.get("Próximo Cobro") or c.get("Fecha de Próximo Cobro")
+              or c.get("Fecha Próximo Cobro") or c.get("Próximo Intento de Cobro"))
+        if isinstance(pc, dict):
+            pc = pc.get("start")
+        fila = {
+            "titular": titular_map.get(key) or "(sin titular)",
+            "poliza": r["poliza"],
+            "dias_de_atraso": r["dias_de_atraso"],
+            "monto_faltante": r["monto_faltante"],
+            "estado": r["estado"],
+            "numero_referencia": r.get("numero_referencia"),
+            "proximo_cobro": pc,
+            "conducto": c.get("Conducto de cobro") or c.get("Conducto"),
+            "url": c.get("_url"),
+        }
+        prev = por_poliza.get(key)
+        if not prev or fila["dias_de_atraso"] > prev["dias_de_atraso"]:
+            por_poliza[key] = fila
+
+    filas = sorted(
+        por_poliza.values(),
+        key=lambda f: (-int(f["dias_de_atraso"] or 0), -nc._to_int(f["monto_faltante"])),
+    )
+    total_faltante = sum(nc._to_int(f["monto_faltante"]) for f in filas)
+
+    return {
+        "modo": "cartera_atraso",
+        "asesor_email": email_asesor,
+        "total_polizas_revisadas": len(polizas_uniq),
+        "total_cobranzas": len(cobranzas),
+        "total_en_atraso": len(filas),
+        "total_monto_faltante": total_faltante,
+        "polizas_en_atraso": filas[: (limite or 200)],
+        "stats": {"tiempo_ms": int((time.time() - t0) * 1000),
+                  "emisiones_crudas": len(emisiones)},
+    }
+
+
 def _rel_first_name(rel: Any) -> Optional[str]:
     """Nombre del primer item de una relation Notion, tolerante a
     list[dict] (con 'name'), list[str] (page id o nombre) o None.
@@ -383,14 +488,25 @@ def consultar(
     if modo not in MODOS_VALIDOS:
         modo = "completo"
 
-    # ATAJO especial: si modo=cartera y tenemos email_asesor, ejecutar la pipeline
-    # dedicada y retornar directo (no pasa por la maquinaria de búsqueda general).
-    if modo == "cartera" and email_asesor:
-        t_c0 = time.time()
-        cartera = cartera_de_asesor(email_asesor, filtro_estado=filtro_estado)
-        cartera["modo"] = "cartera"
-        cartera["stats"]["tiempo_ms"] = int((time.time() - t_c0) * 1000)
-        return cartera
+    # ATAJO especial: si modo=cartera, ejecutar la pipeline dedicada y retornar directo.
+    # Si no vino email_asesor explícito pero el modo es cartera, tomamos el primer
+    # email del mensaje/listas como el del asesor (robustez: a veces el selector manda
+    # el email en `emails` en vez de `email_asesor`).
+    if modo == "cartera":
+        ea = email_asesor
+        if not ea:
+            _e_rx = _extraer(mensaje)[0] if mensaje else []
+            _cand = [x for x in (list(emails or []) + list(_e_rx)) if x]
+            ea = _cand[0].strip().lower() if _cand else None
+        if ea:
+            # "pólizas/clientes EN ATRASO / con deuda de la cartera" → ranking por atraso.
+            if _pide_atraso(mensaje) or filtro_estado == "atraso":
+                return cartera_en_atraso_de_asesor(ea, limite=limite or 200)
+            t_c0 = time.time()
+            cartera = cartera_de_asesor(ea, filtro_estado=filtro_estado)
+            cartera["modo"] = "cartera"
+            cartera["stats"]["tiempo_ms"] = int((time.time() - t_c0) * 1000)
+            return cartera
 
     # 1. Combinar listas explícitas + extracción regex + email_asesor/cliente
     emails_in = list(emails or [])

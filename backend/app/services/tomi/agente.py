@@ -94,6 +94,12 @@ Elegí el más acotado posible — traer todo (modo="completo") es caro y ruidos
    4. Resuelve fondos de inversión (Portafolios) por cada póliza.
    USAR para: "cartera de X", "clientes y fondos del asesor", "qué productos tiene cada cliente de Y".
    REQUIERE: `email_asesor`. Sin email, no funciona — el modo necesita un correo concreto.
+   PÓLIZAS EN ATRASO DE LA CARTERA: si un ASESOR pide "las pólizas/clientes EN ATRASO,
+   con DEUDA, vencidas o en mora de su cartera" (ej: "lista de pólizas en atraso con el
+   titular, de la más crítica a la de menos días"), usá `modo=cartera` con su
+   `email_asesor` y DEJÁ la palabra "atraso"/"deuda" en el `mensaje`. El informe te
+   devuelve el RANKING por días de atraso con el titular, la póliza y el monto faltante,
+   ya ordenado (más días primero). No necesitás iterar póliza por póliza.
 
 - `cobranzas` → Solo cobranzas filtradas por póliza.
    USAR para: "cuándo paga X", "saldo de PLU3-XXX", "próximo cobro",
@@ -222,8 +228,8 @@ def _tools_schema() -> List[Dict[str, Any]]:
                         },
                         "filtro_estado": {
                             "type": "string",
-                            "enum": ["activos", "en_proceso", "perdidos"],
-                            "description": "(solo modo cartera) Filtra clientes por categoría: 'activos' = con póliza Activa, 'en_proceso' = con póliza pendiente/documentos faltantes, 'perdidos' = cancelados/pre-emisión. Si el asesor pregunta 'cuántos clientes tengo' suele referirse a 'activos'.",
+                            "enum": ["activos", "en_proceso", "perdidos", "atraso"],
+                            "description": "(solo modo cartera) Filtra clientes por categoría: 'activos' = con póliza Activa, 'en_proceso' = con póliza pendiente/documentos faltantes, 'perdidos' = cancelados/pre-emisión, 'atraso' = ranking de pólizas EN ATRASO/con deuda de la cartera (por días de atraso). Si el asesor pregunta 'cuántos clientes tengo' suele referirse a 'activos'.",
                         },
                         "incluir": {
                             "type": "array",
