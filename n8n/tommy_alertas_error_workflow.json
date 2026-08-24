@@ -1,0 +1,66 @@
+{
+  "name": "Tommy - Alertas de Fallo (Error Workflow)",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        -600,
+        0
+      ],
+      "id": "a1b2c3d4-0001-4000-8000-000000000001",
+      "name": "Error Trigger"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://plataforma-babilonia-babilonia.qfsutf.easypanel.host/api/tomi/alerta",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Tomi-Key",
+              "value": "k7m9x2vp4n8q3rt6w1zy5fhj0bgds8ec"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  origen: ($json.execution && ($json.execution.lastNodeExecuted || ($json.execution.error && $json.execution.error.node && $json.execution.error.node.name))) || 'n8n',\n  error_type: ($json.execution && $json.execution.error && ($json.execution.error.name || $json.execution.error.constructor && $json.execution.error.constructor.name)) || 'n8n_error',\n  mensaje: ($json.execution && $json.execution.error && $json.execution.error.message) || 'Fallo en workflow de Tommy',\n  severidad: 'ERROR',\n  workflow: ($json.workflow && $json.workflow.name) || '',\n  execution_url: ($json.execution && $json.execution.url) || '',\n  detalle: {\n    node_error: ($json.execution && $json.execution.error && $json.execution.error.node && $json.execution.error.node.name) || '',\n    stack: ($json.execution && $json.execution.error && $json.execution.error.stack ? String($json.execution.error.stack).slice(0, 1200) : ''),\n    mode: ($json.execution && $json.execution.mode) || '',\n    execution_id: ($json.execution && $json.execution.id) || ''\n  }\n}) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -360,
+        0
+      ],
+      "id": "a1b2c3d4-0002-4000-8000-000000000002",
+      "name": "Reportar al backend"
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Reportar al backend",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true
+  }
+}

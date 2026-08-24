@@ -140,3 +140,29 @@ class FailedDispatch(Base):
     resolved = Column(Boolean, default=False, index=True)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow, index=True)
     last_attempt_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+
+
+class TomiError(Base):
+    """Registro de FALLOS de Tommy (backend + n8n) para el sistema de alertas.
+
+    Cada fila es una FIRMA de error única (capa+origen+tipo); si el mismo error se
+    repite, se incrementa `count` y se actualiza `last_seen` en vez de duplicar
+    (dedupe). El notificador avisa por Telegram con rate-limit por firma.
+    """
+    __tablename__ = "tomi_errores"
+    id = Column(PK, primary_key=True, autoincrement=True)
+    signature = Column(String, nullable=False, index=True)  # hash capa+origen+tipo
+    capa = Column(String, index=True)                  # "backend" | "n8n"
+    origen = Column(String)                            # endpoint o nombre de nodo
+    error_type = Column(String)                        # tipo/clase de error
+    severidad = Column(String, default="ERROR", index=True)  # WARN | ERROR | CRITICAL
+    mensaje = Column(Text)                             # mensaje de error
+    http_status = Column(Integer)
+    wa_id = Column(String, index=True)
+    user_message = Column(Text)                        # mensaje del usuario que lo gatilló
+    detalle = Column(JSON)                             # payload extra (tool, args, stack…)
+    count = Column(Integer, default=1)                 # cuántas veces ocurrió esta firma
+    resolved = Column(Boolean, default=False, index=True)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, index=True)
+    last_seen = Column(DateTime(timezone=True), default=datetime.utcnow, index=True)
+    last_notified_at = Column(DateTime(timezone=True))  # para rate-limit de avisos

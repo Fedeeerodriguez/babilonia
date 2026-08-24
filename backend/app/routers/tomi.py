@@ -65,10 +65,18 @@ class TomiSafeRoute(APIRoute):
                                     request.url.path, len(raw))
             try:
                 return await original(request)
-            except (HTTPException, RequestValidationError):
+            except HTTPException:
+                # 401/400/404 intencionales: no son "Tommy roto", no alertamos.
+                raise
+            except RequestValidationError as e:
+                # 422 (ej. wa_id con tipo inválido): bug de integración real → alertar.
+                _alerta_fallo(request, e, error_type="RequestValidationError",
+                              mensaje=str(e)[:500], http_status=422)
                 raise
             except Exception as e:  # noqa: BLE001
                 log.exception("Endpoint Tomi %s falló: %s", request.url.path, e)
+                _alerta_fallo(request, e, error_type=type(e).__name__,
+                              mensaje=str(e)[:500], http_status=500)
                 return JSONResponse(
                     status_code=200,
                     content={
@@ -94,11 +102,46 @@ from app.services.tomi import clasificador as clasif
 from app.services.tomi import notion_scanner as nscan
 from app.services.tomi import tickets as tk
 from app.services.tomi import interruptor as sw
+from app.services.tomi import alertas as _alertas
 from app.services.tomi.cache import notion_cache
 
 router = APIRouter(prefix="/api/tomi", tags=["tomi"], route_class=TomiSafeRoute)
 
 INTERNAL_KEY = os.getenv("TOMI_INTERNAL_KEY", "")
+
+
+def _alerta_fallo(request, exc, *, error_type: str, mensaje: str, http_status: int) -> None:
+    """Reporta un fallo del backend al sistema de alertas (Telegram + tomi_errores).
+
+    Best-effort: intenta sacar wa_id / mensaje del body ya reparado. Nunca levanta.
+    """
+    try:
+        import json as _json
+        wa_id = None
+        user_message = None
+        raw = getattr(request, "_body", None)
+        if raw:
+            try:
+                data = _json.loads(raw)
+                if isinstance(data, dict):
+                    wa_id = data.get("wa_id") or data.get("user_id")
+                    if wa_id is not None:
+                        wa_id = str(wa_id)
+                    user_message = data.get("mensaje") or data.get("mensaje_usuario")
+            except Exception:  # noqa: BLE001
+                pass
+        _alertas.reportar(
+            capa="backend",
+            origen=request.url.path,
+            error_type=error_type,
+            mensaje=mensaje,
+            http_status=http_status,
+            wa_id=wa_id,
+            user_message=(str(user_message)[:300] if user_message else None),
+            exc=exc,
+        )
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _clean_utf8(s: Optional[str]) -> Optional[str]:
@@ -371,6 +414,15 @@ def calendly(body: CalendlyIn, x_tomi_key: Optional[str] = Header(default=None))
 class BasesDatosIn(BaseModel):
     mensaje: str = ""
     wa_id: Optional[str] = None
+
+    @field_validator("wa_id", mode="before")
+    @classmethod
+    def _coerce_wa_id(cls, v):
+        # n8n manda el waId como número; lo aceptamos y lo pasamos a string.
+        if v is None:
+            return v
+        return str(v)
+
     emails: Optional[List[str]] = None
     polizas: Optional[List[str]] = None
     clientes: Optional[List[str]] = Field(default=None, description="Nombres de clientes (no emails)")
@@ -423,6 +475,16 @@ class AgenteIn(BaseModel):
     historial: Optional[List[HistMsg]] = None
     wa_id: Optional[str] = None
     max_iter: int = 5
+
+    @field_validator("wa_id", mode="before")
+    @classmethod
+    def _coerce_wa_id(cls, v):
+        # n8n manda el waId como NÚMERO (5492954407096). Pydantic v2 rechazaría
+        # un int para un campo str con 422 → el tool de n8n falla y el agente
+        # responde "inconveniente técnico". Lo aceptamos y lo pasamos a string.
+        if v is None:
+            return v
+        return str(v)
 
 
 @router.post("/agente")
@@ -730,6 +792,69 @@ def list_dispatch_failed(
             for r in rows
         ],
     }
+
+
+# ---------- Alertas de fallo (capa B: n8n Error Workflow reporta acá) ----------
+
+class AlertaIn(BaseModel):
+    origen: str = Field(..., description="Nodo/etapa de n8n donde ocurrió el fallo")
+    error_type: Optional[str] = Field(default="n8n_error", description="Tipo/clase de error")
+    mensaje: Optional[str] = Field(default="", description="Mensaje de error")
+    severidad: Optional[str] = Field(default="ERROR", description="WARN | ERROR | CRITICAL")
+    wa_id: Optional[str] = None
+    user_message: Optional[str] = None
+    workflow: Optional[str] = None
+    execution_url: Optional[str] = None
+    detalle: Optional[Dict[str, Any]] = None
+
+    @field_validator("wa_id", mode="before")
+    @classmethod
+    def _coerce_wa(cls, v):
+        return str(v) if v is not None else v
+
+
+@router.post("/alerta")
+def alerta(body: AlertaIn, x_tomi_key: Optional[str] = Header(default=None)):
+    """Recibe un aviso de fallo desde el Error Workflow de n8n y lo envía al mismo
+    notificador (Telegram + tabla `tomi_errores`) que usa el backend. Así las 2 capas
+    comparten dedupe, rate-limit e histórico."""
+    _auth(x_tomi_key)
+    det = dict(body.detalle or {})
+    if body.workflow:
+        det["workflow"] = body.workflow
+    if body.execution_url:
+        det["execution_url"] = body.execution_url
+    _alertas.reportar(
+        capa="n8n",
+        origen=body.origen,
+        error_type=body.error_type or "n8n_error",
+        mensaje=body.mensaje or "",
+        severidad=(body.severidad or "ERROR").upper(),
+        wa_id=body.wa_id,
+        user_message=body.user_message,
+        detalle=det or None,
+    )
+    return {"ok": True}
+
+
+@router.get("/errores")
+def listar_errores(
+    include_resolved: bool = False,
+    limit: int = 50,
+    db: Session = Depends(get_db),
+    x_tomi_key: Optional[str] = Header(default=None),
+):
+    """Lista los últimos errores registrados (para el panel 'Salud de Tommy')."""
+    _auth(x_tomi_key)
+    from sqlalchemy import text as _text
+    where = "" if include_resolved else "WHERE resolved = false"
+    rows = db.execute(_text(f"""
+        SELECT id, signature, capa, origen, error_type, severidad, mensaje,
+               http_status, wa_id, count, resolved, created_at, last_seen
+        FROM tomi_errores {where}
+        ORDER BY last_seen DESC LIMIT :lim
+    """), {"lim": min(limit, 200)}).mappings().all()
+    return {"count": len(rows), "items": [dict(r) for r in rows]}
 
 
 # ---------- Debug: ver schema de una DB Notion ----------
