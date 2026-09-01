@@ -281,6 +281,25 @@ def _render_cartera(resultado: Dict[str, Any]) -> str:
                     lines.append(
                         f"  - {pol_md} — **{prod}** — Prima **${prima}** {period} — **{estado}** — Emisión: {fecha}{fondos_str}"
                     )
+                    # Estado de cobranza de la póliza (lo que el asesor pidió ver)
+                    cob = p.get("cobranza")
+                    if cob:
+                        cparts = []
+                        if cob.get("numero_referencia") not in (None, ""):
+                            cparts.append(f"Nº cliente: `{cob['numero_referencia']}`")
+                        dias = cob.get("dias_de_atraso", 0)
+                        cparts.append(f"Atraso: **{dias} días**" if dias else "Al día")
+                        if cob.get("monto_faltante") not in (None, "", 0):
+                            cparts.append(f"Debe: `${cob['monto_faltante']}`")
+                        if cob.get("estado_cobranza"):
+                            cparts.append(f"Estado: **{cob['estado_cobranza']}**")
+                        if cob.get("numero_pago"):
+                            cparts.append(f"Aportado: `{cob['numero_pago']}`")
+                        if cob.get("proximo_cobro"):
+                            cparts.append(f"Próx. cobro: `{cob['proximo_cobro']}`")
+                        lines.append("    · Cobranza → " + " · ".join(cparts))
+                    else:
+                        lines.append("    · Cobranza → sin registro de cobranza")
             lines.append("")
 
     return "\n".join(lines)
@@ -318,15 +337,19 @@ def _render_cartera_atraso(resultado: Dict[str, Any]) -> str:
         pol = _safe(f.get("poliza"))
         dias = f.get("dias_de_atraso", 0)
         partes = [f"**{i}. {titular}** — póliza `{pol}` — **{dias} días de atraso**"]
+        if f.get("numero_referencia") not in (None, ""):
+            partes.append(f"nº cliente: `{f['numero_referencia']}`")
         monto = f.get("monto_faltante")
         if monto not in (None, "", 0):
-            partes.append(f"faltante: `{monto}`")
+            partes.append(f"debe: `${monto}`")
+        if f.get("monto_prima") not in (None, "", 0):
+            partes.append(f"prima: `${f['monto_prima']}`")
+        if f.get("numero_pago"):
+            partes.append(f"aportado: `{f['numero_pago']}`")
+        if f.get("estado"):
+            partes.append(f"estado: **{f['estado']}**")
         if f.get("proximo_cobro"):
             partes.append(f"próx. cobro: `{f['proximo_cobro']}`")
-        if f.get("conducto"):
-            partes.append(f"conducto: `{f['conducto']}`")
-        if f.get("estado"):
-            partes.append(f"estado: `{f['estado']}`")
         lines.append("- " + " · ".join(partes))
     lines.append("")
     return "\n".join(lines)
