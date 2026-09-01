@@ -296,6 +296,17 @@ def cartera_de_asesor(
             "_key": key,
         })
 
+    # 3.5 Cruce con Cobranzas: adjuntar a cada póliza el estado de cobro (nº de
+    # cliente, días de atraso vivos, deuda, prima, estado, número de pago). Es lo
+    # que el asesor quiere ver en su lista de clientes. Batch por todas las pólizas.
+    todas_polizas = [
+        p.get("numero") for c in clientes_out for p in c["polizas"] if p.get("numero")
+    ]
+    mapa_cob = _mapa_cobranzas(todas_polizas) if todas_polizas else {}
+    for c in clientes_out:
+        for p in c["polizas"]:
+            p["cobranza"] = mapa_cob.get(_norm_poliza(p.get("numero") or ""))
+
     # 4. Aplicar filtro_estado si viene
     todos_clientes = list(clientes_out)
     if filtro_estado in ("activos", "en_proceso", "perdidos"):
@@ -383,6 +394,7 @@ def cartera_en_atraso_de_asesor(email_asesor: str, limite: int = 200) -> Dict[st
 
     polizas_uniq = sorted({(e.get("Número de Póliza") or "").strip()
                            for e in emisiones if (e.get("Número de Póliza") or "").strip()})
+    norm_targets = {_norm_poliza(p): p for p in polizas_uniq if _norm_poliza(p)}
 
     # Cobranzas en chunks (evita exceder los límites de filtro de Notion).
     cobranzas: List[Dict[str, Any]] = []
@@ -400,19 +412,19 @@ def cartera_en_atraso_de_asesor(email_asesor: str, limite: int = 200) -> Dict[st
         r = nc._cobranza_resumen(c)
         if not r["en_atraso"]:
             continue
-        key = _norm_poliza(r["poliza"])
-        pc = (c.get("Próximo Cobro") or c.get("Fecha de Próximo Cobro")
-              or c.get("Fecha Próximo Cobro") or c.get("Próximo Intento de Cobro"))
-        if isinstance(pc, dict):
-            pc = pc.get("start")
+        # Match por contención: la cobranza se titula "Cobranza <póliza>".
+        key = _match_target_poliza(r["poliza"], norm_targets) or _norm_poliza(r["poliza"])
+        det = _cobranza_detalle(c)
         fila = {
             "titular": titular_map.get(key) or "(sin titular)",
-            "poliza": r["poliza"],
+            "poliza": norm_targets.get(key) or r["poliza"],
             "dias_de_atraso": r["dias_de_atraso"],
             "monto_faltante": r["monto_faltante"],
+            "monto_prima": det.get("monto_prima"),
             "estado": r["estado"],
             "numero_referencia": r.get("numero_referencia"),
-            "proximo_cobro": pc,
+            "numero_pago": det.get("numero_pago"),
+            "proximo_cobro": det.get("proximo_cobro"),
             "conducto": c.get("Conducto de cobro") or c.get("Conducto"),
             "url": c.get("_url"),
         }
@@ -437,6 +449,80 @@ def cartera_en_atraso_de_asesor(email_asesor: str, limite: int = 200) -> Dict[st
         "stats": {"tiempo_ms": int((time.time() - t0) * 1000),
                   "emisiones_crudas": len(emisiones)},
     }
+
+
+# ──────────── Cruce de Cobranzas por póliza (para listas de clientes) ────────────
+
+def _cobranza_detalle(c: Dict[str, Any]) -> Dict[str, Any]:
+    """Extrae de una cobranza los datos que el asesor quiere ver en su lista de
+    clientes: nº de cliente (Referencia), días de atraso VIVOS, deuda, prima,
+    estado de cobranza y número de pago (aportaciones hechas / esperadas)."""
+    dias = nc._to_int(nc.pick_dias_atraso(c))
+    hechas = c.get("Aportaciones Hechas")
+    esperadas = c.get("Aportaciones Esperadas")
+    # "Número de pago" = progreso de aportaciones. OJO: estos campos son MONTOS
+    # de dinero (aportado vs esperado), NO cantidad de cuotas → se rotulan con $.
+    numero_pago = None
+    if hechas not in (None, "") or esperadas not in (None, ""):
+        if esperadas not in (None, ""):
+            numero_pago = f"${nc._to_int(hechas):,} de ${nc._to_int(esperadas):,}"
+        else:
+            numero_pago = f"${nc._to_int(hechas):,}"
+    pc = c.get("Próximo intento de cobro")
+    if isinstance(pc, dict):
+        pc = pc.get("start")
+    return {
+        "numero_referencia": c.get("Número de Referencia"),   # "número de cliente"
+        "dias_de_atraso": dias,
+        "en_atraso": dias > 0,
+        "monto_faltante": c.get("Monto Faltante"),
+        "monto_prima": c.get("Monto de Prima"),
+        "estado_cobranza": c.get("Estado de Cobranza"),        # "Pago hecho" / "Por contactar" / ...
+        "numero_pago": numero_pago,                            # "X de Y" (aportaciones)
+        "proximo_cobro": pc,
+    }
+
+
+def _match_target_poliza(titulo: Any, norm_targets: Dict[str, str]) -> Optional[str]:
+    """Devuelve la póliza-objetivo (normalizada) que corresponde al título de una
+    cobranza. Las cobranzas suelen titularse "Cobranza PLU3-412364", así que además
+    del match exacto probamos por CONTENCIÓN del código de póliza. Precisión: evita
+    perder el cruce por el prefijo 'Cobranza '."""
+    tn = _norm_poliza(titulo)
+    if not tn:
+        return None
+    if tn in norm_targets:
+        return tn
+    for nt in norm_targets:
+        if nt and nt in tn:
+            return nt
+    return None
+
+
+def _mapa_cobranzas(polizas: List[str]) -> Dict[str, Dict[str, Any]]:
+    """{póliza normalizada del ASESOR -> _cobranza_detalle}. Batchea en chunks para no
+    exceder el límite de filtro de Notion. Si una póliza tiene varias cobranzas, gana
+    la de mayor atraso (la más crítica). Match por contención (título 'Cobranza <pol>')."""
+    polizas_uniq = sorted({p for p in (polizas or []) if p})
+    norm_targets = {_norm_poliza(p): p for p in polizas_uniq if _norm_poliza(p)}
+    mapa: Dict[str, Dict[str, Any]] = {}
+    CHUNK = 40
+    for i in range(0, len(polizas_uniq), CHUNK):
+        grupo = polizas_uniq[i:i + CHUNK]
+        try:
+            cobs = nc.buscar_cobranzas_batch(grupo, page_size=100)
+        except Exception as ex:  # noqa: BLE001
+            log.error("_mapa_cobranzas chunk falló: %s", ex)
+            continue
+        for c in cobs:
+            key = _match_target_poliza(c.get("Póliza") or c.get("_title"), norm_targets)
+            if not key:
+                continue
+            det = _cobranza_detalle(c)
+            prev = mapa.get(key)
+            if not prev or det["dias_de_atraso"] > prev["dias_de_atraso"]:
+                mapa[key] = det
+    return mapa
 
 
 # ──────────── Ticket 1: detalle del equipo para líderes ────────────
