@@ -223,6 +223,26 @@ def _render_cartera(resultado: Dict[str, Any]) -> str:
     if filtro:
         lines.append(f"- **Filtro aplicado:** `{filtro}` → mostrando {devueltos} de {total} clientes.")
     lines.append(f"- **Latencia:** {stats.get('tiempo_ms', 0)} ms")
+
+    # Desglose diferenciado de clientes (Ticket 2): NO sumar todo en un solo número.
+    dg = resultado.get("clientes_desglose") or {}
+    if dg:
+        lines.append("")
+        lines.append("## Conteo diferenciado (usar estos números, no el total mixto)")
+        lines.append(
+            f"- 👤 **Clientes PROPIOS (es su asesor ante el cliente): `{dg.get('clientes_propios', 0)}`** "
+            f"— ACTIVOS (póliza Activa): **`{dg.get('clientes_propios_activos', 0)}`**"
+        )
+        lines.append(f"  - Pólizas en SU portal DAF: `{dg.get('polizas_en_mi_portal_daf', 0)}`")
+        otros = dg.get("polizas_en_portal_de_otros") or {}
+        if otros:
+            detalle = ", ".join(f"{k}: {v}" for k, v in otros.items())
+            lines.append(f"  - Pólizas en portal de OTRO DAF (ej. el líder): `{sum(otros.values())}` ({detalle})")
+        lines.append(f"- 🤝 Acompañados: `{dg.get('acompanados', 0)}` · 🔄 Migración: `{dg.get('migracion', 0)}`")
+        if dg.get("allianz_ppr_desde_daf") is not None:
+            ini = dg.get("inicio_daf")
+            suf = f" (desde activación DAF: {ini})" if ini else ""
+            lines.append(f"- 🏛️ Clientes en portal Allianz (PPR){suf}: `{dg.get('allianz_ppr_desde_daf')}`")
     lines.append(
         f"_Trazabilidad: {stats.get('emisiones_crudas_recuperadas', 0)} emisiones crudas → "
         f"{stats.get('buckets_creados', 0)} buckets → "
