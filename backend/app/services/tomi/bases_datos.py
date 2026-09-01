@@ -328,6 +328,18 @@ def cartera_de_asesor(
         else:
             segmentos["perdidos"] += 1
 
+    # 7. Desglose diferenciado (Ticket 2): propios/activos, portal DAF propio vs del
+    # líder, acompañados, migración, Allianz PPR. Va acá porque el asesor pregunta
+    # "cuántos clientes tengo" y el selector rutea a cartera. Reusa las emisiones ya
+    # traídas (sin costo extra); solo pide el record del asesor para DAF/relaciones.
+    desglose: Optional[Dict[str, Any]] = None
+    try:
+        ar = nc.buscar_asesor_por_email(email_asesor)
+        if ar:
+            desglose = desglose_clientes_de_asesor(ar[0], emisiones=emisiones)
+    except Exception as ex:  # noqa: BLE001
+        log.error("cartera: desglose_clientes_de_asesor falló: %s", ex)
+
     return {
         "asesor_email": email_asesor,
         "filtro_estado": filtro_estado,
@@ -337,6 +349,7 @@ def cartera_de_asesor(
         "total_polizas": total_polizas,
         "total_fondos_distintos": len({f for c in clientes_out for f in c["fondos_consolidados"]}),
         "clientes": clientes_out,
+        "clientes_desglose": desglose,
         "stats": {
             "emisiones_crudas_recuperadas": len(emisiones),
             "buckets_creados": len(buckets),
@@ -556,14 +569,41 @@ def equipo_de_lider(email_lider: str, limite: int = 100) -> Dict[str, Any]:
     if not lideres:
         return base
     lider = lideres[0]
+    lider_id = lider.get("_id")
     base["lider"] = lider.get("Nombre Completo") or lider.get("_title")
 
-    team_ids = [x for x in (lider.get("Asesores 1") or []) if isinstance(x, str) and len(x) >= 32]
-    if not team_ids:
+    # El equipo del líder son los ids de `Asesores 1` (equipo directo declarado en su
+    # record). Expandir esos 25 pages uno por uno tardaba ~86s (cada asesor tiene 80
+    # props con fórmulas/rollups que Notion recalcula en pages.retrieve) → timeout.
+    # En su lugar: UNA query trae por props a todos los asesores cuyo `Líder` es este
+    # líder (su downline, con Semáforo/Liga ya calculados) y de ahí tomamos los que
+    # están en `Asesores 1`. Los pocos que falten (relación asimétrica) se expanden.
+    team_ids = {x for x in (lider.get("Asesores 1") or []) if isinstance(x, str) and len(x) >= 32}
+    by_id: Dict[str, Dict[str, Any]] = {}
+    if lider_id:
+        try:
+            for r in nc._query(
+                nc.DB_ASESORES,
+                {"property": "Líder", "relation": {"contains": lider_id}},
+                page_size=100,
+            ):
+                if r.get("_id"):
+                    by_id[r["_id"]] = r
+        except Exception as ex:  # noqa: BLE001
+            log.error("equipo_de_lider query backward falló: %s", ex)
+
+    if team_ids:
+        rows = [by_id[t] for t in team_ids if t in by_id]
+        faltan = [t for t in team_ids if t not in by_id]
+        if faltan:
+            rows += nc.expandir_ids_full(faltan, max_ids=40, max_workers=8)
+    else:
+        # Sin `Asesores 1`: usamos toda la downline (los que lo tienen como Líder).
+        rows = list(by_id.values())
+
+    if not rows:
         base["stats"]["tiempo_ms"] = int((time.time() - t0) * 1000)
         return base
-
-    rows = nc.expandir_ids_full(team_ids, extract_props=None, max_ids=200, max_workers=8)
     asesores: List[Dict[str, Any]] = []
     for r in rows:
         eliminado = bool(r.get("Eliminado de Nivel")) or bool(r.get("Eliminado de Avisos"))
@@ -599,7 +639,10 @@ def equipo_de_lider(email_lider: str, limite: int = 100) -> Dict[str, Any]:
 _ESTADOS_ACTIVOS_EMISION = {"activa"}  # valor de `Estado` (status) de una emisión activa
 
 
-def desglose_clientes_de_asesor(asesor_record: Dict[str, Any]) -> Dict[str, Any]:
+def desglose_clientes_de_asesor(
+    asesor_record: Dict[str, Any],
+    emisiones: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
     """Desglosa los clientes de un asesor SIN mezclarlos en un solo número (Ticket [Jime]).
 
     Distingue, con reglas del negocio confirmadas:
@@ -615,7 +658,8 @@ def desglose_clientes_de_asesor(asesor_record: Dict[str, Any]) -> Dict[str, Any]
     email = (asesor_record.get("Correo") or "").strip().lower()
     mi_daf_ids = {x for x in (asesor_record.get("DAFs") or []) if isinstance(x, str) and len(x) >= 32}
 
-    emisiones = nc.emisiones_por_correo_asesor(email, page_size=200) if email else []
+    if emisiones is None:
+        emisiones = nc.emisiones_por_correo_asesor(email, page_size=200) if email else []
 
     propios: Dict[str, Dict[str, Any]] = {}   # correo/nombre cliente -> {nombre, activo}
     polizas_mi_portal = 0
