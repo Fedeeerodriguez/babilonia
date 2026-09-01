@@ -43,18 +43,43 @@ def _render_usuario_asesor(u: Dict[str, Any]) -> List[str]:
         "",
     ]
 
-    # Conteos por fuente (transparencia)
-    pf = exp.get("clientes_por_fuente") or {}
-    if pf:
-        lines.append("#### Conteo de clientes (por fuente, deduplicado al final)")
-        lines.append(f"- En relaciones del record del asesor (forward): `{pf.get('total_forward_unico', 0)}`")
-        for prop, n in (pf.get("forward_record_asesor") or {}).items():
-            lines.append(f"  - `{prop}`: {n}")
-        lines.append(f"- En DB Clientes con Asesor=él (backward): `{pf.get('total_backward_unico', 0)}`")
-        lines.append(f"- Intersección (ambos lados): `{pf.get('interseccion', 0)}`")
-        lines.append(f"- Solo forward: `{pf.get('solo_forward', 0)}` | Solo backward: `{pf.get('solo_backward', 0)}`")
-        lines.append(f"- **TOTAL ÚNICO: `{exp.get('total_clientes', 0)}`**")
+    # Desglose diferenciado de clientes (Ticket 2): NO mezclar todo en un número.
+    dg = exp.get("clientes_desglose") or {}
+    if dg:
+        lines.append("#### Clientes del asesor (desglosados, NO sumar todo en un solo número)")
+        lines.append(
+            f"- 👤 **Clientes PROPIOS (es su asesor ante el cliente): `{dg.get('clientes_propios', 0)}`** "
+            f"— de ellos ACTIVOS (póliza Activa): **`{dg.get('clientes_propios_activos', 0)}`**"
+        )
+        lines.append(f"  - Pólizas en SU portal DAF: `{dg.get('polizas_en_mi_portal_daf', 0)}`")
+        otros = dg.get("polizas_en_portal_de_otros") or {}
+        if otros:
+            detalle = ", ".join(f"{k}: {v}" for k, v in otros.items())
+            lines.append(f"  - Pólizas en portal de OTRO DAF (ej. el líder): `{sum(otros.values())}` ({detalle})")
+        lines.append(f"- 🤝 Clientes ACOMPAÑADOS: `{dg.get('acompanados', 0)}`")
+        lines.append(f"- 🔄 Clientes de MIGRACIÓN: `{dg.get('migracion', 0)}`")
+        if dg.get("allianz_ppr_desde_daf") is not None:
+            ini = dg.get("inicio_daf")
+            suf = f" (desde activación DAF: {ini})" if ini else ""
+            lines.append(f"- 🏛️ Clientes en portal Allianz (PPR){suf}: `{dg.get('allianz_ppr_desde_daf')}`")
+        lines.append(
+            f"_El total mixto anterior (`{exp.get('total_clientes', 0)}`) sumaba propios + acompañados + "
+            f"migración + asignados; usá los números desglosados de arriba, NO ese total._"
+        )
         lines.append("")
+    else:
+        # Fallback legacy (transparencia técnica) si no vino el desglose.
+        pf = exp.get("clientes_por_fuente") or {}
+        if pf:
+            lines.append("#### Conteo de clientes (por fuente, deduplicado al final)")
+            lines.append(f"- En relaciones del record del asesor (forward): `{pf.get('total_forward_unico', 0)}`")
+            for prop, n in (pf.get("forward_record_asesor") or {}).items():
+                lines.append(f"  - `{prop}`: {n}")
+            lines.append(f"- En DB Clientes con Asesor=él (backward): `{pf.get('total_backward_unico', 0)}`")
+            lines.append(f"- Intersección (ambos lados): `{pf.get('interseccion', 0)}`")
+            lines.append(f"- Solo forward: `{pf.get('solo_forward', 0)}` | Solo backward: `{pf.get('solo_backward', 0)}`")
+            lines.append(f"- **TOTAL ÚNICO: `{exp.get('total_clientes', 0)}`**")
+            lines.append("")
 
     # Lista completa de clientes
     clientes = exp.get("clientes") or []
@@ -307,6 +332,40 @@ def _render_cartera_atraso(resultado: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _render_equipo(resultado: Dict[str, Any]) -> str:
+    """Renderer para modo=equipo: asesores del equipo de un líder con su perfil de Liga."""
+    lines: List[str] = ["# Equipo del líder — Tomi · Babilonia", ""]
+    lines.append(f"**Líder:** {_safe(resultado.get('lider'))} (`{_safe(resultado.get('lider_email'))}`)")
+    aseslist = resultado.get("asesores") or []
+    lines.append(
+        f"- **Integrantes del equipo:** {resultado.get('total_equipo', 0)} "
+        f"(Liga activada: {resultado.get('liga_activada', 0)} · eliminados de la Liga: {resultado.get('eliminados', 0)})"
+    )
+    lines.append(f"- **Latencia:** {(resultado.get('stats') or {}).get('tiempo_ms', 0)} ms")
+    lines.append("")
+    if not aseslist:
+        lines.append("**Sin asesores en el equipo** (verificar que sea líder o que tenga equipo cargado).")
+        return "\n".join(lines)
+    lines.append("## Asesores del equipo (semáforo y estado de Liga)")
+    lines.append("")
+    for i, a in enumerate(aseslist, 1):
+        estado_liga = "🚫 ELIMINADO de la Liga" if a.get("eliminado") else (
+            "✅ Liga activada" if a.get("liga_activada") else "⚪ Liga no activada")
+        partes = [f"**{i}. {_safe(a.get('nombre'))}**"]
+        if a.get("semaforo"):
+            partes.append(f"semáforo: {a['semaforo']}")
+        partes.append(estado_liga)
+        if a.get("nivel") not in (None, ""):
+            partes.append(f"nivel: `{a['nivel']}`")
+        if a.get("estado_asesor"):
+            partes.append(f"estado: `{a['estado_asesor']}`")
+        if a.get("correo"):
+            partes.append(f"`{a['correo']}`")
+        lines.append("- " + " · ".join(partes))
+    lines.append("")
+    return "\n".join(lines)
+
+
 def renderizar(resultado: Dict[str, Any]) -> str:
     """Genera markdown determinístico desde el resultado de bd.consultar().
 
@@ -317,6 +376,8 @@ def renderizar(resultado: Dict[str, Any]) -> str:
         return _render_cartera(resultado)
     if resultado.get("modo") == "cartera_atraso":
         return _render_cartera_atraso(resultado)
+    if resultado.get("modo") == "equipo":
+        return _render_equipo(resultado)
 
     lines: List[str] = ["# Informe de bases de datos — Tomi · Babilonia", ""]
 

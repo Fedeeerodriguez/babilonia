@@ -439,6 +439,153 @@ def cartera_en_atraso_de_asesor(email_asesor: str, limite: int = 200) -> Dict[st
     }
 
 
+# ──────────── Ticket 1: detalle del equipo para líderes ────────────
+
+_EQUIPO_RE = re.compile(
+    r"(mi equipo|mis asesores|asesores de mi equipo|mi nivel|integrantes|"
+    r"gente de mi equipo|mi c[eé]lula|mi grupo|equipo a mi cargo|mis reclutas)",
+    re.IGNORECASE,
+)
+
+
+def _pide_equipo(mensaje: Optional[str]) -> bool:
+    """True si un líder pide el detalle de los asesores de su equipo."""
+    return bool(mensaje and _EQUIPO_RE.search(mensaje))
+
+
+def equipo_de_lider(email_lider: str, limite: int = 100) -> Dict[str, Any]:
+    """Detalle de los asesores del equipo de un líder (relación `Asesores 1`).
+
+    Por cada asesor del equipo devuelve su perfil de Liga Babilonia: semáforo,
+    estado activo/eliminado de la Liga, nivel y contacto. Reemplaza la devolución
+    de IDs crudos que hacía Tommy antes (Ticket [Jime]).
+    """
+    t0 = time.time()
+    base = {"modo": "equipo", "lider_email": email_lider or None, "lider": None,
+            "total_equipo": 0, "asesores": [], "stats": {"tiempo_ms": 0}}
+    if not email_lider:
+        return base
+
+    lideres = nc.buscar_asesor_por_email(email_lider)
+    if not lideres:
+        return base
+    lider = lideres[0]
+    base["lider"] = lider.get("Nombre Completo") or lider.get("_title")
+
+    team_ids = [x for x in (lider.get("Asesores 1") or []) if isinstance(x, str) and len(x) >= 32]
+    if not team_ids:
+        base["stats"]["tiempo_ms"] = int((time.time() - t0) * 1000)
+        return base
+
+    rows = nc.expandir_ids_full(team_ids, extract_props=None, max_ids=200, max_workers=8)
+    asesores: List[Dict[str, Any]] = []
+    for r in rows:
+        eliminado = bool(r.get("Eliminado de Nivel")) or bool(r.get("Eliminado de Avisos"))
+        liga_activada = bool(r.get("Liga Activada")) or bool(r.get("Activación Liga"))
+        asesores.append({
+            "nombre": r.get("Nombre Completo") or r.get("_title") or "(sin nombre)",
+            "nivel": r.get("Nivel"),
+            "semaforo": r.get("Semáforo Liga"),
+            "liga_activada": liga_activada,
+            "eliminado": eliminado,
+            "estado_asesor": r.get("Estado de Asesor"),
+            "correo": r.get("Correo"),
+            "telefono": r.get("Teléfono"),
+            "url": r.get("_url"),
+        })
+    # Orden: primero los eliminados (accionables), luego por nombre.
+    asesores.sort(key=lambda a: (not a["eliminado"], (a["nombre"] or "").lower()))
+
+    return {
+        "modo": "equipo",
+        "lider_email": email_lider,
+        "lider": base["lider"],
+        "total_equipo": len(asesores),
+        "eliminados": sum(1 for a in asesores if a["eliminado"]),
+        "liga_activada": sum(1 for a in asesores if a["liga_activada"]),
+        "asesores": asesores[: (limite or 100)],
+        "stats": {"tiempo_ms": int((time.time() - t0) * 1000)},
+    }
+
+
+# ──────────── Ticket 2: desglose diferenciado de clientes del asesor ────────────
+
+_ESTADOS_ACTIVOS_EMISION = {"activa"}  # valor de `Estado` (status) de una emisión activa
+
+
+def desglose_clientes_de_asesor(asesor_record: Dict[str, Any]) -> Dict[str, Any]:
+    """Desglosa los clientes de un asesor SIN mezclarlos en un solo número (Ticket [Jime]).
+
+    Distingue, con reglas del negocio confirmadas:
+      - PROPIOS: pólizas donde el asesor es el `Asesor` (ante el cliente), vía `Correo Asesor`.
+        Se separa cuántos son ACTIVOS (emisión con `Estado`='Activa').
+      - Portal DAF: de esos propios, cuántas pólizas están en SU portal (relación `DAF`
+        de la emisión == el `DAFs` del asesor) vs en el portal de OTRO (el líder,
+        ej. José Mier), agrupado por nombre de `Asesor DAF`.
+      - ACOMPAÑADOS y MIGRACIÓN: relaciones separadas del record del asesor.
+      - Allianz (PPR) desde el DAF: cantidad de `Clientes PPR Allianz` del DAF del asesor
+        y la fecha `Inicio de DAF`.
+    """
+    email = (asesor_record.get("Correo") or "").strip().lower()
+    mi_daf_ids = {x for x in (asesor_record.get("DAFs") or []) if isinstance(x, str) and len(x) >= 32}
+
+    emisiones = nc.emisiones_por_correo_asesor(email, page_size=200) if email else []
+
+    propios: Dict[str, Dict[str, Any]] = {}   # correo/nombre cliente -> {nombre, activo}
+    polizas_mi_portal = 0
+    polizas_portal_otro: Dict[str, int] = {}  # nombre del DAF titular -> nº de pólizas
+    for e in emisiones:
+        clave = (e.get("Correo Cliente") or "").strip().lower() or (e.get("Nombre Cliente") or "").strip().lower()
+        activo = (e.get("Estado") or "").strip().lower() in _ESTADOS_ACTIVOS_EMISION
+        if clave:
+            prev = propios.get(clave)
+            if not prev:
+                propios[clave] = {"nombre": e.get("Nombre Cliente"), "activo": activo}
+            elif activo:
+                propios[clave]["activo"] = True
+        # ¿en mi portal DAF o en el de otro (el líder)?
+        daf_rel = {x for x in (e.get("DAF") or []) if isinstance(x, str) and len(x) >= 32}
+        if mi_daf_ids and (daf_rel & mi_daf_ids):
+            polizas_mi_portal += 1
+        else:
+            titular = e.get("Asesor DAF") or "(otro portal)"
+            if isinstance(titular, list):
+                titular = titular[0] if titular else "(otro portal)"
+            polizas_portal_otro[str(titular)] = polizas_portal_otro.get(str(titular), 0) + 1
+
+    total_propios = len(propios)
+    propios_activos = sum(1 for v in propios.values() if v["activo"])
+    acompanados = len([x for x in (asesor_record.get("Clientes - Acompañados") or []) if isinstance(x, str)])
+    migracion = len([x for x in (asesor_record.get("Migración de Clientes") or []) if isinstance(x, str)])
+
+    # DAF del asesor: clientes en el portal Allianz (PPR) + fecha de activación.
+    allianz_ppr: Optional[int] = None
+    inicio_daf: Optional[str] = None
+    if mi_daf_ids:
+        try:
+            daf_rows = nc.expandir_ids_full(list(mi_daf_ids)[:1], extract_props=None, max_ids=1)
+            if daf_rows:
+                dr = daf_rows[0]
+                ppr = [x for x in (dr.get("Clientes PPR Allianz") or []) if isinstance(x, str)]
+                allianz_ppr = len(ppr)
+                ini = dr.get("Inicio de DAF")
+                inicio_daf = ini.get("start") if isinstance(ini, dict) else ini
+        except Exception as ex:  # noqa: BLE001
+            log.error("desglose: DAF del asesor falló: %s", ex)
+
+    return {
+        "clientes_propios": total_propios,
+        "clientes_propios_activos": propios_activos,
+        "polizas_en_mi_portal_daf": polizas_mi_portal,
+        "polizas_en_portal_de_otros": polizas_portal_otro,
+        "acompanados": acompanados,
+        "migracion": migracion,
+        "allianz_ppr_desde_daf": allianz_ppr,
+        "inicio_daf": inicio_daf,
+        "emisiones_revisadas": len(emisiones),
+    }
+
+
 def _rel_first_name(rel: Any) -> Optional[str]:
     """Nombre del primer item de una relation Notion, tolerante a
     list[dict] (con 'name'), list[str] (page id o nombre) o None.
@@ -487,6 +634,18 @@ def consultar(
 
     if modo not in MODOS_VALIDOS:
         modo = "completo"
+
+    # ATAJO especial (Ticket 1): un LÍDER pide el detalle de su equipo → expandir
+    # `Asesores 1` con el perfil de Liga de cada asesor. Se dispara por keyword y
+    # necesita un email (el del líder).
+    if _pide_equipo(mensaje):
+        ea_lider = email_asesor or email_cliente
+        if not ea_lider:
+            _e = _extraer(mensaje)[0] if mensaje else []
+            _c = [x for x in (list(emails or []) + list(_e)) if x]
+            ea_lider = _c[0].strip().lower() if _c else None
+        if ea_lider:
+            return equipo_de_lider(ea_lider, limite=limite or 100)
 
     # ATAJO especial: si modo=cartera, ejecutar la pipeline dedicada y retornar directo.
     # Si no vino email_asesor explícito pero el modo es cartera, tomamos el primer
@@ -688,6 +847,13 @@ def consultar(
                             exp["_clientes_truncados"] = True
                     except Exception as e:
                         log.error("clientes_completos_de_asesor falló: %s", e)
+                    # Ticket 2: desglose diferenciado (propios/activos, portal DAF propio
+                    # vs del líder, acompañados, migración, Allianz PPR desde el DAF).
+                    try:
+                        exp["clientes_desglose"] = desglose_clientes_de_asesor(data)
+                        queries_count += 1
+                    except Exception as e:
+                        log.error("desglose_clientes_de_asesor falló: %s", e)
                 if expandir_emisiones:
                     try:
                         emis_agg = nc.emisiones_completas_de_asesor(data)
