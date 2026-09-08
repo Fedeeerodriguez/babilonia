@@ -103,6 +103,7 @@ from app.services.tomi import notion_scanner as nscan
 from app.services.tomi import tickets as tk
 from app.services.tomi import interruptor as sw
 from app.services.tomi import alertas as _alertas
+from app.services.tomi import aprendizaje as aprend
 from app.services.tomi.cache import notion_cache
 
 router = APIRouter(prefix="/api/tomi", tags=["tomi"], route_class=TomiSafeRoute)
@@ -1196,3 +1197,115 @@ def migracion_cartera(body: MigracionCarteraIn, x_tomi_key: Optional[str] = Head
     return {"results": nc.buscar_migracion_cartera(
         emision=body.emision, migrado=body.migrado, limit=body.limit,
     )}
+
+
+# ---------- Auto-aprendizaje: feedback de asesores → directrices ----------
+
+class AprenderFeedbackIn(BaseModel):
+    mensaje: str                                  # lo que escribió el asesor
+    respuesta_tomi: Optional[str] = None          # respuesta previa de Tommy que se corrige
+    publico: Optional[str] = None                 # rol (de clasificar-usuario): asesor | cliente | ...
+    user_email: Optional[str] = None              # asesor que da el feedback
+    wa_id: Optional[str] = None
+    historial: Optional[List[Dict[str, Any]]] = None
+    continuacion: bool = False                     # true si es la respuesta a una repregunta previa
+
+    @field_validator("wa_id", mode="before")
+    @classmethod
+    def _wa(cls, v):
+        return None if v is None else str(v)
+
+
+@router.post("/aprender-feedback")
+def aprender_feedback(body: AprenderFeedbackIn, x_tomi_key: Optional[str] = Header(default=None),
+                      db: Session = Depends(get_db)):
+    """Analiza un mensaje de un ASESOR: si es feedback técnico y aplicable, aprende una
+    directriz para TODOS (auto-activa alta confianza, o deja propuesta). Puede repreguntar
+    para profundizar. Devuelve `responder` = lo que Tommy le dice al asesor (pregunta o acuse).
+
+    SOLO asesores: si `publico` no es 'asesor', no hace nada.
+    """
+    _auth(x_tomi_key)
+    if (body.publico or "").strip().lower() != "asesor":
+        return {"es_feedback": False, "motivo": "solo se aprende de asesores"}
+    return aprend.procesar_feedback_asesor(
+        db, mensaje=_clean_utf8(body.mensaje),
+        respuesta_tomi=_clean_utf8(body.respuesta_tomi or "") or None,
+        origen_email=body.user_email,
+        historial=[{"role": h.get("role"), "content": _clean_utf8(str(h.get("content", "")))}
+                   for h in (body.historial or [])],
+        continuacion=body.continuacion,
+    )
+
+
+@router.get("/directrices")
+def get_directrices(ambito: str = "todos", x_tomi_key: Optional[str] = Header(default=None),
+                    db: Session = Depends(get_db)):
+    """Bloque de directrices ACTIVAS para inyectar en el systemMessage del agente (n8n)."""
+    _auth(x_tomi_key)
+    activas = aprend.directrices_activas(db, ambito)
+    return {
+        "bloque": aprend.bloque_directrices(db, ambito),
+        "activas": [{"id": d.id, "texto": d.texto, "categoria": d.categoria,
+                     "ambito": d.ambito, "confianza": d.confianza,
+                     "veces_reforzada": d.veces_reforzada} for d in activas],
+    }
+
+
+@router.get("/directrices/admin")
+def listar_directrices(estado: Optional[str] = None, x_tomi_key: Optional[str] = Header(default=None),
+                       db: Session = Depends(get_db)):
+    """Lista directrices para gestión (todas o por estado: propuesta|activa|rechazada|desactivada)."""
+    _auth(x_tomi_key)
+    q = db.query(models.DirectrizAprendida)
+    if estado:
+        q = q.filter(models.DirectrizAprendida.estado == estado)
+    rows = q.order_by(models.DirectrizAprendida.created_at.desc()).limit(200).all()
+    return {"directrices": [{
+        "id": d.id, "texto": d.texto, "categoria": d.categoria, "ambito": d.ambito,
+        "estado": d.estado, "confianza": d.confianza, "veces_reforzada": d.veces_reforzada,
+        "origen_email": d.origen_email, "feedback_texto": d.feedback_texto,
+        "motivo": d.motivo, "created_at": str(d.created_at),
+    } for d in rows]}
+
+
+class DirectrizAccionIn(BaseModel):
+    revisada_por: Optional[str] = None
+
+
+def _set_estado(db: Session, dir_id: int, estado: str, quien: Optional[str]):
+    d = db.get(models.DirectrizAprendida, dir_id)
+    if not d:
+        raise HTTPException(404, "directriz no encontrada")
+    from datetime import datetime, timezone
+    d.estado = estado
+    d.revisada_por = quien
+    if estado == models.DirectrizEstado.activa.value and not d.activada_at:
+        d.activada_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(d)
+    return {"id": d.id, "estado": d.estado, "texto": d.texto}
+
+
+@router.post("/directrices/{dir_id}/aprobar")
+def aprobar_directriz(dir_id: int, body: DirectrizAccionIn, x_tomi_key: Optional[str] = Header(default=None),
+                      db: Session = Depends(get_db)):
+    """Aprueba una propuesta → la activa para TODOS."""
+    _auth(x_tomi_key)
+    return _set_estado(db, dir_id, models.DirectrizEstado.activa.value, body.revisada_por)
+
+
+@router.post("/directrices/{dir_id}/rechazar")
+def rechazar_directriz(dir_id: int, body: DirectrizAccionIn, x_tomi_key: Optional[str] = Header(default=None),
+                       db: Session = Depends(get_db)):
+    """Rechaza una propuesta (no se aplica)."""
+    _auth(x_tomi_key)
+    return _set_estado(db, dir_id, models.DirectrizEstado.rechazada.value, body.revisada_por)
+
+
+@router.post("/directrices/{dir_id}/desactivar")
+def desactivar_directriz(dir_id: int, body: DirectrizAccionIn, x_tomi_key: Optional[str] = Header(default=None),
+                         db: Session = Depends(get_db)):
+    """Rollback: desactiva una directriz que estaba activa (deja de aplicarse a todos)."""
+    _auth(x_tomi_key)
+    return _set_estado(db, dir_id, models.DirectrizEstado.desactivada.value, body.revisada_por)
