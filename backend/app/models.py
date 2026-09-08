@@ -166,3 +166,41 @@ class TomiError(Base):
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow, index=True)
     last_seen = Column(DateTime(timezone=True), default=datetime.utcnow, index=True)
     last_notified_at = Column(DateTime(timezone=True))  # para rate-limit de avisos
+
+
+class DirectrizEstado(str, Enum):
+    propuesta = "propuesta"        # esperando aprobación (baja confianza)
+    activa = "activa"              # aplicada a TODOS (se inyecta en el prompt del agente)
+    rechazada = "rechazada"        # descartada por un admin
+    desactivada = "desactivada"    # estuvo activa y se revirtió (rollback)
+
+
+class DirectrizAprendida(Base):
+    """Directriz de comportamiento que Tommy APRENDE del feedback de los asesores.
+
+    Bucle de auto-mejora: cuando un ASESOR corrige a Tommy en el chat, un analizador LLM
+    decide si el feedback es técnico y GENERALIZABLE; si lo es, destila una directriz corta
+    e imperativa (ej. "Al listar clientes, incluir siempre el nº de póliza"). Las de alta
+    confianza se activan solas (y avisan por Telegram); las de baja confianza quedan como
+    'propuesta' para aprobación. Las activas se inyectan en el systemMessage del agente n8n
+    vía GET /api/tomi/directrices → afectan a TODAS las conversaciones. Auditable y reversible.
+    """
+    __tablename__ = "tomi_directrices"
+    id = Column(PK, primary_key=True, autoincrement=True)
+    texto = Column(Text, nullable=False)               # la directriz, corta e imperativa
+    categoria = Column(String, index=True)             # tono | formato | dato | proceso | privacidad | alcance
+    ambito = Column(String, default="todos", index=True)  # todos | asesores | clientes
+    estado = Column(String, default=DirectrizEstado.propuesta.value, index=True)
+    confianza = Column(Integer, default=0)             # 0-100 (del analizador LLM)
+    dedupe_hash = Column(String, index=True)           # hash normalizado para evitar duplicados
+    veces_reforzada = Column(Integer, default=1)       # cuántos feedbacks distintos la sostienen
+    # trazabilidad del origen
+    feedback_texto = Column(Text)                      # el mensaje del asesor que la originó
+    respuesta_previa = Column(Text)                    # la respuesta de Tommy que se corrigió
+    origen_email = Column(String, index=True)          # asesor que la disparó
+    motivo = Column(Text)                              # por qué el LLM la consideró aplicable
+    # gestión
+    revisada_por = Column(String)                      # admin que aprobó/rechazó
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, index=True)
+    activada_at = Column(DateTime(timezone=True))
+    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
