@@ -48,14 +48,27 @@ cada conversación (cualquiera)
 - **Dedupe** por hash normalizado → no acumula duplicados; refuerza los repetidos.
 - Todo queda en `tomi_directrices` (auditable) y se puede **revertir con 1 request**.
 
-## Wiring en n8n (pendiente de aplicar)
+## Wiring en n8n — Plan A (todo en el backend, SIN nodos nuevos)
 
-1. **Aprender** — en el flujo del responder, cuando `publico == asesor`, agregar un nodo HTTP
-   `POST /api/tomi/aprender-feedback` con el mensaje del asesor, la respuesta previa de Tommy y
-   el `historial`. Si la respuesta trae `responder`, usar ESE texto como respuesta al asesor.
-   Si `accion == "preguntar"`, en el siguiente turno del asesor mandar `continuacion: true`.
-2. **Aplicar** — al inicio de cada conversación, nodo HTTP `GET /api/tomi/directrices` y
-   anteponer `{{ bloque }}` al `systemMessage` del AGENTE SOPORTE TOMMY.
+`/api/tomi/clasificar-usuario` ya se llama en CADA mensaje y ahora hace las dos mitades:
+- **Aprende** solo — si el usuario es `asesor`, analiza su mensaje como posible feedback
+  (con repregunta multi-turno; el estado de la sesión vive en el backend, en `tomi_settings`
+  con key `fbses:<user_id>`). No requiere que n8n lleve ningún estado ni el flag `continuacion`.
+- **Devuelve** dos campos extra en su respuesta:
+  - `directrices_bloque`: las directrices activas, listas para inyectar en el prompt.
+  - `responder` (solo si hubo feedback): la repregunta o el acuse de recibo para el asesor.
+
+Único cambio en n8n (una sola vez, sin nodos nuevos):
+1. **Aplicar** — al final del `systemMessage` del `AGENTE SOPORTE TOMMY`, agregar:
+   `{{ $('Clasificar (Python)').item.json.directrices_bloque }}`
+2. **Repregunta/acuse (opcional, recomendado)** — si `{{ $('Clasificar (Python)').item.json.responder }}`
+   no está vacío, mandar ese texto al asesor (es la pregunta de profundización o el gracias).
+
+> El endpoint `POST /api/tomi/aprender-feedback` sigue existiendo (útil para el panel/tests o
+> para una integración por nodo separado), pero con el Plan A no hace falta usarlo.
+
+> Migración futura: cuando el `AGENTE SOPORTE TOMMY` se mueva de n8n a Python, tanto el
+> aplicar como el responder los maneja el backend y n8n queda como simple relay.
 
 ## Config (env)
 

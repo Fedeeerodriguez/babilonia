@@ -18,7 +18,7 @@ import json
 import logging
 import os
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from openai import OpenAI
 from sqlalchemy.orm import Session
@@ -31,6 +31,8 @@ log = logging.getLogger("tomi.aprendizaje")
 CHAT_MODEL = os.getenv("OPENAI_CHAT_MODEL", "gpt-4.1-mini")
 # Umbral de confianza (0-100) para auto-activar sin aprobación humana.
 UMBRAL_AUTO = int(os.getenv("APRENDIZAJE_UMBRAL_AUTO", "80"))
+# Vida de una sesión de feedback abierta (para las repreguntas multi-turno).
+SESION_TTL_MIN = int(os.getenv("APRENDIZAJE_SESION_TTL_MIN", "20"))
 
 # Pre-filtro: señales de que un mensaje es una corrección/feedback y no una consulta normal.
 _RE_FEEDBACK = re.compile(
@@ -234,3 +236,81 @@ def procesar_feedback_asesor(db: Session, mensaje: str, respuesta_tomi: str | No
             "accion": "activada" if auto else "propuesta",
             "directriz_id": d.id, "directriz": d.texto, "confianza": confianza,
             "contradice": contradice, "acuse": acuse, "responder": acuse}
+
+
+# ---------- Sesión de feedback (repregunta multi-turno, estado 100% en backend) ----------
+# Cuando Tommy repregunta para profundizar, guardamos una sesión efímera por usuario en
+# TomiSetting (key/value). Así el SIGUIENTE mensaje del asesor se toma como la respuesta a
+# esa repregunta SIN que n8n tenga que llevar ningún estado.
+
+def _ses_key(user_id: str) -> str:
+    return f"fbses:{user_id}"
+
+
+def _get_sesion(db: Session, user_id: str) -> dict | None:
+    if not user_id:
+        return None
+    row = db.get(models.TomiSetting, _ses_key(user_id))
+    if not row or not row.value:
+        return None
+    # TTL
+    upd = row.updated_at
+    if upd:
+        if upd.tzinfo is None:
+            upd = upd.replace(tzinfo=timezone.utc)
+        if datetime.now(timezone.utc) - upd > timedelta(minutes=SESION_TTL_MIN):
+            _clear_sesion(db, user_id)
+            return None
+    try:
+        return json.loads(row.value)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _set_sesion(db: Session, user_id: str, data: dict) -> None:
+    if not user_id:
+        return
+    key = _ses_key(user_id)
+    row = db.get(models.TomiSetting, key)
+    payload = json.dumps(data, ensure_ascii=False)
+    if row:
+        row.value = payload
+        row.updated_at = datetime.now(timezone.utc)
+    else:
+        db.add(models.TomiSetting(key=key, value=payload,
+                                  updated_at=datetime.now(timezone.utc), updated_by="aprendizaje"))
+    db.commit()
+
+
+def _clear_sesion(db: Session, user_id: str) -> None:
+    if not user_id:
+        return
+    row = db.get(models.TomiSetting, _ses_key(user_id))
+    if row:
+        db.delete(row)
+        db.commit()
+
+
+def procesar_con_sesion(db: Session, user_id: str, mensaje: str, email: str | None) -> dict:
+    """Envuelve procesar_feedback_asesor con la sesión de repregunta. Pensado para llamarse
+    desde /clasificar-usuario en CADA mensaje de un asesor. Fail-safe: nunca levanta."""
+    try:
+        ses = _get_sesion(db, user_id)
+        if ses:
+            # Este mensaje es la respuesta a una repregunta previa → continuación.
+            hist = [{"role": "user", "content": ses.get("mensaje0", "")},
+                    {"role": "assistant", "content": ses.get("pregunta", "")}]
+            r = procesar_feedback_asesor(db, mensaje, None, email, historial=hist, continuacion=True)
+            if r.get("accion") == "preguntar":
+                _set_sesion(db, user_id, {"mensaje0": ses.get("mensaje0", mensaje), "pregunta": r.get("pregunta", "")})
+            else:
+                _clear_sesion(db, user_id)
+            return r
+        # Sin sesión abierta: flujo normal (con pre-filtro barato).
+        r = procesar_feedback_asesor(db, mensaje, None, email)
+        if r.get("accion") == "preguntar":
+            _set_sesion(db, user_id, {"mensaje0": mensaje, "pregunta": r.get("pregunta", "")})
+        return r
+    except Exception as ex:  # noqa: BLE001
+        log.warning("procesar_con_sesion falló: %s", ex)
+        return {"es_feedback": False}
