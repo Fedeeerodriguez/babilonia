@@ -280,7 +280,7 @@ def clasificar_usuario(
             "user_nombre": body.user_nombre,
             "fuente": "interruptor",
         }
-    return clasif.clasificar(
+    res = clasif.clasificar(
         db,
         user_id=body.user_id,
         mensaje_usuario=body.mensaje_usuario,
@@ -288,6 +288,28 @@ def clasificar_usuario(
         user_nombre=body.user_nombre,
         force=body.force,
     )
+    # ---- Auto-aprendizaje (Plan A: todo acá, sin nodos nuevos en n8n) ----
+    # Fail-safe: si algo de esto falla, la clasificación se devuelve igual.
+    try:
+        if isinstance(res, dict):
+            # 1) Directrices aprendidas activas → para inyectar en el systemMessage del agente.
+            res["directrices_bloque"] = aprend.bloque_directrices(db, "todos")
+            # 2) Si es un ASESOR, analizamos su mensaje como posible feedback (repregunta con
+            #    estado en backend). `responder` = lo que Tommy le dice (pregunta o acuse).
+            if str(res.get("comando_2", "")).strip().lower() == "asesor":
+                fb = aprend.procesar_con_sesion(
+                    db,
+                    user_id=str(body.user_id or res.get("user_id") or ""),
+                    mensaje=_clean_utf8(body.mensaje_usuario or "") or "",
+                    email=res.get("email"),
+                )
+                if fb.get("es_feedback"):
+                    res["aprendizaje"] = fb
+                    if fb.get("responder"):
+                        res["responder"] = fb["responder"]
+    except Exception as ex:  # noqa: BLE001
+        log.warning("aprendizaje en clasificar-usuario falló (se ignora): %s", ex)
+    return res
 
 
 @router.get("/clasificar-usuario/{user_id}")
