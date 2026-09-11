@@ -334,7 +334,14 @@ def cartera_de_asesor(
     # traídas (sin costo extra); solo pide el record del asesor para DAF/relaciones.
     desglose: Optional[Dict[str, Any]] = None
     try:
-        ar = nc.buscar_asesor_por_email(email_asesor)
+        # filter_properties: sin esto, traer el record del asesor (82 props con fórmulas/
+        # rollups) tardaba >20s y timeouteaba → el desglose salía en None. Pedimos solo las
+        # relaciones que usa desglose_clientes_de_asesor.
+        ar = nc.buscar_asesor_por_email(
+            email_asesor,
+            props=["Nombre Completo", "Correo", "DAFs",
+                   "Clientes - Acompañados", "Migración de Clientes"],
+        )
         if ar:
             desglose = desglose_clientes_de_asesor(ar[0], emisiones=emisiones)
     except Exception as ex:  # noqa: BLE001
@@ -552,6 +559,15 @@ def _pide_equipo(mensaje: Optional[str]) -> bool:
     return bool(mensaje and _EQUIPO_RE.search(mensaje))
 
 
+# Props (nombres) que mostramos de cada asesor del equipo. Pedir SOLO estas via
+# filter_properties evita que Notion recompute las ~82 props del record (fórmulas/rollups)
+# y baja la query de la downline de ~34s a ~1s por página, manteniendo Semáforo/Liga.
+_EQUIPO_PROPS = [
+    "Nombre Completo", "Nivel", "Semáforo Liga", "Liga Activada", "Activación Liga",
+    "Eliminado de Nivel", "Eliminado de Avisos", "Estado de Asesor", "Correo", "Teléfono",
+]
+
+
 def equipo_de_lider(email_lider: str, limite: int = 100) -> Dict[str, Any]:
     """Detalle de los asesores del equipo de un líder (relación `Asesores 1`).
 
@@ -565,7 +581,12 @@ def equipo_de_lider(email_lider: str, limite: int = 100) -> Dict[str, Any]:
     if not email_lider:
         return base
 
-    lideres = nc.buscar_asesor_por_email(email_lider)
+    # Solo necesitamos el record del líder para su nombre y la relación `Asesores 1`
+    # (equipo directo). Pedir esas props via filter_properties evita que Notion recompute
+    # las ~82 props (15 fórmulas + 12 rollups) del record → de ~34s (timeout) a ~1s.
+    lideres = nc.buscar_asesor_por_email(
+        email_lider, props=["Nombre Completo", "Asesores 1", "Líder"]
+    )
     if not lideres:
         return base
     lider = lideres[0]
@@ -573,18 +594,19 @@ def equipo_de_lider(email_lider: str, limite: int = 100) -> Dict[str, Any]:
     base["lider"] = lider.get("Nombre Completo") or lider.get("_title")
 
     # El equipo del líder son los ids de `Asesores 1` (equipo directo declarado en su
-    # record). Expandir esos 25 pages uno por uno tardaba ~86s (cada asesor tiene 80
-    # props con fórmulas/rollups que Notion recalcula en pages.retrieve) → timeout.
-    # En su lugar: UNA query trae por props a todos los asesores cuyo `Líder` es este
-    # líder (su downline, con Semáforo/Liga ya calculados) y de ahí tomamos los que
-    # están en `Asesores 1`. Los pocos que falten (relación asimétrica) se expanden.
+    # record). Expandir esos pages uno por uno con pages.retrieve tardaba ~86s (cada
+    # asesor tiene 82 props con fórmulas/rollups que Notion recalcula) → timeout.
+    # En su lugar: una query PAGINADA trae por props (solo las ~10 que mostramos, con
+    # filter_properties → ~1s/página) a toda la downline (`Líder` = este líder, con
+    # Semáforo/Liga ya calculados) y de ahí tomamos los que están en `Asesores 1`.
     team_ids = {x for x in (lider.get("Asesores 1") or []) if isinstance(x, str) and len(x) >= 32}
     by_id: Dict[str, Dict[str, Any]] = {}
     if lider_id:
         try:
-            for r in nc._query(
+            for r in nc._query_paged(
                 nc.DB_ASESORES,
                 {"property": "Líder", "relation": {"contains": lider_id}},
+                props=_EQUIPO_PROPS,
                 page_size=100,
             ):
                 if r.get("_id"):

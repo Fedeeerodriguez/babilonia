@@ -99,6 +99,34 @@ notion_breaker = CircuitBreaker(
 )
 
 
+# ---------- filter_properties: acelerar queries a bases con muchas fórmulas ----------
+# La base Asesores tiene ~82 propiedades (15 fórmulas + 12 rollups + 23 relaciones) que
+# Notion RECALCULA en cada query, aun para una sola fila → una query simple tardaba ~34s
+# y con timeout de 20s se moría. `filter_properties` (query-string de IDs) hace que Notion
+# devuelva SOLO esas props y no compute el resto: en pruebas bajó de 34.2s a 1.2s (28x),
+# manteniendo Semáforo Liga / Liga y demás fórmulas pedidas correctamente calculadas.
+_PROP_ID_CACHE: Dict[str, Dict[str, str]] = {}
+
+
+def _prop_ids(db_id: str, names: List[str]) -> List[str]:
+    """Resuelve NOMBRES de propiedad → IDs para `filter_properties`. Cachea el schema
+    del db la primera vez (databases.retrieve). Devuelve solo los ids de los nombres que
+    existen (silenciosamente ignora los que no); si no puede leer el schema devuelve []
+    (el caller cae al comportamiento normal sin filter_properties)."""
+    if not db_id or not names:
+        return []
+    m = _PROP_ID_CACHE.get(db_id)
+    if m is None:
+        try:
+            db = _retry_429(_client().databases.retrieve, database_id=db_id)
+            m = {n: p["id"] for n, p in (db.get("properties") or {}).items()}
+        except Exception as e:  # noqa: BLE001
+            log.error("no pude leer schema para filter_properties db=%s: %s", db_id, e)
+            m = {}
+        _PROP_ID_CACHE[db_id] = m
+    return [m[n] for n in names if n in m]
+
+
 # Marcadores de errores TRANSITORIOS de Notion (rate-limit, timeouts, 5xx, red):
 # estos se reintentan y NO deberían abrir el breaker salvo que se agoten los intentos.
 _TRANSIENT_MARKERS = (
@@ -397,10 +425,15 @@ def _query(
     db_id: str,
     filt: Optional[Dict[str, Any]] = None,
     page_size: int = 25,
+    props: Optional[List[str]] = None,
 ) -> List[Dict[str, Any]]:
+    """Query a un database. `props` = nombres de propiedad a devolver (via
+    filter_properties): cuando el db tiene muchas fórmulas/rollups (ej. Asesores),
+    pedir solo las props necesarias evita que Notion recompute el resto y acelera
+    la query ~28x. Si se omite, se devuelven todas las props (comportamiento previo)."""
     if not db_id:
         return []
-    cache_key = f"query:{hash_key(db_id, filt, page_size)}"
+    cache_key = f"query:{hash_key(db_id, filt, page_size, tuple(props) if props else None)}"
     cached_val = notion_cache.get(cache_key)
     if cached_val is not None:
         return cached_val
@@ -408,6 +441,10 @@ def _query(
         kwargs: Dict[str, Any] = {"database_id": db_id, "page_size": page_size}
         if filt:
             kwargs["filter"] = filt
+        if props:
+            ids = _prop_ids(db_id, props)
+            if ids:
+                kwargs["filter_properties"] = ids
         resp = _retry_429(_client().databases.query, **kwargs)
         result = [_flatten_props(p) for p in resp.get("results", [])]
         notion_cache.set(cache_key, result)
@@ -417,9 +454,53 @@ def _query(
         return []
 
 
+def _query_paged(
+    db_id: str,
+    filt: Optional[Dict[str, Any]] = None,
+    props: Optional[List[str]] = None,
+    page_size: int = 100,
+    max_pages: int = 10,
+) -> List[Dict[str, Any]]:
+    """Como _query pero paginando (has_more/next_cursor) hasta traer TODO el resultado.
+    Pensado para queries que ahora son baratas con `props` (filter_properties) pero cuyo
+    conjunto supera las 100 filas (ej. downline de un líder). Cachea el resultado completo."""
+    if not db_id:
+        return []
+    cache_key = f"queryall:{hash_key(db_id, filt, page_size, tuple(props) if props else None, max_pages)}"
+    cached_val = notion_cache.get(cache_key)
+    if cached_val is not None:
+        return cached_val
+    out: List[Dict[str, Any]] = []
+    cursor: Optional[str] = None
+    ids = _prop_ids(db_id, props) if props else []
+    try:
+        for _ in range(max_pages):
+            kwargs: Dict[str, Any] = {"database_id": db_id, "page_size": page_size}
+            if filt:
+                kwargs["filter"] = filt
+            if ids:
+                kwargs["filter_properties"] = ids
+            if cursor:
+                kwargs["start_cursor"] = cursor
+            resp = _retry_429(_client().databases.query, **kwargs)
+            out.extend(_flatten_props(p) for p in resp.get("results", []))
+            if not resp.get("has_more"):
+                break
+            cursor = resp.get("next_cursor")
+            if not cursor:
+                break
+    except APIResponseError as e:
+        log.error("Notion query paginada falló db=%s: %s", db_id, e)
+    notion_cache.set(cache_key, out)
+    return out
+
+
 # ---------- Búsquedas ----------
 
-def buscar_asesor_por_email(email: str) -> List[Dict[str, Any]]:
+def buscar_asesor_por_email(
+    email: str,
+    props: Optional[List[str]] = None,
+) -> List[Dict[str, Any]]:
     if not email:
         return []
     return _query(
@@ -428,6 +509,7 @@ def buscar_asesor_por_email(email: str) -> List[Dict[str, Any]]:
             {"property": "Correo", "rich_text": {"contains": email}},
             {"property": "Correo Hotmart", "rich_text": {"contains": email}},
         ]},
+        props=props,
     )
 
 
