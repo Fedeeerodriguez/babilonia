@@ -10,6 +10,7 @@ import Analytics from './pages/Analytics'
 import Sandbox from './pages/Sandbox'
 import Team from './pages/Team'
 import Higiene from './pages/Higiene'
+import TicketsAllianz from './pages/TicketsAllianz'
 import Layout from './components/Layout/Layout'
 import ProtectedRoute from './components/Layout/ProtectedRoute'
 
@@ -30,6 +31,7 @@ export default function App() {
       <Route path="/analytics" element={<P><Analytics /></P>} />
       <Route path="/sandbox" element={<P><Sandbox /></P>} />
       <Route path="/higiene" element={<P requireAdmin><Higiene /></P>} />
+      <Route path="/tickets-allianz" element={<P requireAdmin><TicketsAllianz /></P>} />
       <Route path="/team" element={<P requireAdmin><Team /></P>} />
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />

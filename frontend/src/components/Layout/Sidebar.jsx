@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { LayoutGrid, MessagesSquare, Users, BookOpen, Bot, UserCog, BarChart3, FlaskConical, Link2 } from 'lucide-react'
+import { LayoutGrid, MessagesSquare, Users, BookOpen, Bot, UserCog, BarChart3, FlaskConical, Link2, ClipboardCheck } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 
 const link = ({ isActive }) =>
@@ -45,6 +45,7 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }) {
             <div className="section-label">Administración</div>
             <NavLink to="/team" onClick={onClose} className={link}><UserCog size={15} strokeWidth={1.8}/> Usuarios</NavLink>
             <NavLink to="/higiene" onClick={onClose} className={link}><Link2 size={15} strokeWidth={1.8}/> Higiene de datos</NavLink>
+            <NavLink to="/tickets-allianz" onClick={onClose} className={link}><ClipboardCheck size={15} strokeWidth={1.8}/> Ticket Allianz Seguimiento</NavLink>
           </>
         )}
 
