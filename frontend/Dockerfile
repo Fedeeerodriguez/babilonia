@@ -3,9 +3,15 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Accept build-time API URL
+# Variables de build (Vite las hornea en `npm run build`). EasyPanel pasa las
+# Environment del servicio como build-args; Docker solo expone las declaradas con ARG.
 ARG VITE_API_URL
 ENV VITE_API_URL=$VITE_API_URL
+# Panel 'Ticket Allianz Seguimiento' (API externa, fuera de Tomi prod).
+ARG VITE_TICKETS_ALLIANZ_API
+ENV VITE_TICKETS_ALLIANZ_API=$VITE_TICKETS_ALLIANZ_API
+ARG VITE_TICKETS_ALLIANZ_TOKEN
+ENV VITE_TICKETS_ALLIANZ_TOKEN=$VITE_TICKETS_ALLIANZ_TOKEN
 
 COPY package*.json ./
 RUN npm ci --legacy-peer-deps
