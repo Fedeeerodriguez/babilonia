@@ -578,7 +578,7 @@ class CrearTicketIn(BaseModel):
                     "ticket. Ej: 'Pago no reflejado', 'Verificar acceso de alumno'. Si "
                     "no se manda, se resume desde la descripción.")
     encargado: Optional[str] = Field(
-        default=None, description="Admin que atiende: Ceci | Yans | Anayanci | Jime")
+        default=None, description="Admin que atiende: Ceci | Yans | Anayanci | Jime | Fede (tecnología)")
     nombre_cliente: Optional[str] = None
     email: Optional[str] = None
     telefono: Optional[str] = None

@@ -26,7 +26,10 @@ from app.services.tomi import notion_client as nc
 log = logging.getLogger("tomi.tickets")
 
 # Admins válidos y sus áreas (según los roles que dio Jime).
-ENCARGADOS = {"Ceci", "Yans", "Anayanci", "Jime"}
+ENCARGADOS = {"Ceci", "Yans", "Anayanci", "Jime", "Fede"}
+# Opciones reales del select "Asignado a" en Notion (Fede no está: se lo menciona y se lo
+# vincula por la relación Encargado, sin agregar una opción nueva al select).
+ASIGNADO_OPCIONES = {"Ceci", "Yans", "Anayanci", "Jime"}
 
 # Mapeo laxo: si el LLM manda un tipo aproximado, lo llevamos al select real de Notion.
 TIPOS_VALIDOS = {
@@ -45,6 +48,7 @@ COLABORADORES = {
     "Yans":     {"pagina": "391e7979-cda4-80de-a924-fa6560a27424", "usuario": "99bb24ed-d7fd-402c-aa89-677904b45979"},
     "Anayanci": {"pagina": "180e7979-cda4-8084-b32a-ed46a940d769", "usuario": "a41a6a41-4f06-4016-ad3b-c2f5cd4cd9f2"},
     "Jime":     {"pagina": "4a9cc007-b504-4de2-a6c2-806c0019be0b", "usuario": "37457563-647f-4782-a466-27770524b901"},
+    "Fede":     {"pagina": "391e7979-cda4-8001-b0dd-c6dc851a25e2", "usuario": "2171da66-6ab9-42c5-ad43-2ed9286ddaa2"},
 }
 
 
@@ -168,7 +172,8 @@ def crear_ticket(
         "Estado": {"status": {"name": "Por hacer"}},
     }
     if enc:
-        props["Asignado a"] = {"select": {"name": enc}}
+        if enc in ASIGNADO_OPCIONES:
+            props["Asignado a"] = {"select": {"name": enc}}
         if enc in COLABORADORES:
             props["Encargado"] = {"relation": [{"id": COLABORADORES[enc]["pagina"]}]}
     if email:
