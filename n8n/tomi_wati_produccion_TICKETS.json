@@ -981,6 +981,14 @@
             {
               "name": "medio",
               "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('medio', `Medio de solicitud: Telefono, Discord o Correo. Opcional.`, 'string') }}"
+            },
+            {
+              "name": "wa_id",
+              "value": "={{ String($('Edit Fields1').first().json.message.chat.id) }}"
+            },
+            {
+              "name": "nombre_whatsapp",
+              "value": "={{ $('Webhook').first().json.body.senderName || '' }}"
             }
           ]
         },

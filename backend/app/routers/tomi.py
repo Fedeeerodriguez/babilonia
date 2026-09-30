@@ -586,6 +586,11 @@ class CrearTicketIn(BaseModel):
     tipo: Optional[str] = Field(default=None, description="Tipo de Solicitud (select de Notion)")
     prioridad: Optional[str] = Field(default=None, description="baja | media | alta")
     medio: Optional[str] = Field(default=None, description="Teléfono | Discord | Correo")
+    wa_id: Optional[str] = Field(
+        default=None, description="waId del chat de WhatsApp (lo pone n8n desde el webhook, NO el "
+                                  "LLM). Es el número a quien hay que responderle → TELEFONO.")
+    nombre_whatsapp: Optional[str] = Field(
+        default=None, description="Nombre del contacto en WhatsApp (senderName del webhook).")
 
 
 @router.post("/crear-ticket")
@@ -614,6 +619,8 @@ def crear_ticket(
         tipo=body.tipo,
         prioridad=body.prioridad,
         medio=body.medio,
+        wa_id=body.wa_id,
+        nombre_whatsapp=body.nombre_whatsapp,
     )
 
 
