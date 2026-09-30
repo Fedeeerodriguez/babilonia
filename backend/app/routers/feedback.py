@@ -10,6 +10,7 @@ Flujo de mejora continua:
 Las correcciones promovidas usan el mismo `source` que consume el bot de WATI,
 así que lo aprendido queda disponible de inmediato.
 """
+import logging
 import os
 from collections import Counter
 from datetime import datetime, timezone
@@ -26,6 +27,7 @@ from app.security import get_current_user, require_admin
 router = APIRouter(prefix="/api/feedback", tags=["feedback"])
 
 INTERNAL_KEY = os.getenv("TOMI_INTERNAL_KEY", "")
+log = logging.getLogger("tomi.feedback")
 
 
 def _auth_internal(x_tomi_key: Optional[str]) -> None:
@@ -61,9 +63,16 @@ def log_interaction(
         user_email=body.user_email,
         status=models.FeedbackStatus.pending.value,
     )
-    db.add(fb)
-    db.commit()
-    db.refresh(fb)
+    # Registrar es secundario: si falla la escritura, NO devolvemos 500 (n8n marcaba la
+    # ejecución entera como error y disparaba alertas). Se loguea y se responde 200.
+    try:
+        db.add(fb)
+        db.commit()
+        db.refresh(fb)
+    except Exception as e:  # noqa: BLE001
+        db.rollback()
+        log.error("feedback/log no se pudo registrar: %s", e)
+        return {"skipped": True, "reason": "error al registrar (ver logs)"}
     return schemas.FeedbackOut.model_validate(fb)
 
 

@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional, List, Any
 from uuid import UUID
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, model_validator
 from app.models import UserRole, MessageDirection
 
 
@@ -132,6 +132,15 @@ class FeedbackLogIn(BaseModel):
     source: Optional[str] = None
     publico: Optional[str] = None    # cliente | asesor | prospecto | estudiante | otro
     user_email: Optional[str] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _sin_nulos(cls, data: Any) -> Any:
+        """El LLM a veces emite U+0000 en lugar de '¿' ("\\u0000que te apoyo hoy?").
+        Postgres no acepta NUL en columnas de texto → el INSERT fallaba con 500."""
+        if isinstance(data, dict):
+            return {k: (v.replace("\x00", "") if isinstance(v, str) else v) for k, v in data.items()}
+        return data
 
 
 class FeedbackReviewIn(BaseModel):

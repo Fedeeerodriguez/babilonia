@@ -919,7 +919,8 @@
       "position": [
         352,
         4592
-      ]
+      ],
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -1093,7 +1094,7 @@
           "parameters": [
             {
               "name": "messageText",
-              "value": "={{ $json.output.respuesta_mensaje }}"
+              "value": "={{ ($json.output.respuesta_mensaje || '').replace(/\u0000/g, '') }}"
             }
           ]
         },
