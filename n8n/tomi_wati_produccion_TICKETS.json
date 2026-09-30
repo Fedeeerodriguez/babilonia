@@ -1094,7 +1094,7 @@
           "parameters": [
             {
               "name": "messageText",
-              "value": "={{ ($json.output.respuesta_mensaje || '').replace(/\u0000/g, '') }}"
+              "value": "={{ ($json.output.respuesta_mensaje || '').replace(/\\u0000/g, '') }}"
             }
           ]
         },
