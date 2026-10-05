@@ -155,3 +155,23 @@ def test_avisar_por_whatsapp_por_correo_si_el_numero_no_coincide(db, enviados, m
     assert avc.avisar_por_whatsapp(db, "5219991112222", "no puedo", simular=False)["encontrado"] is False
     r = avc.avisar_por_whatsapp(db, "5219991112222", "no puedo", correo="Laura@Mail.com", simular=False)
     assert r["encontrado"] and len(enviados) == 2
+
+
+# ---------------------------------------------------------------- contrato con la plantilla WATI
+def test_contrato_plantilla_codigo_y_documentacion():
+    """Las variables que manda el backend == las {{variables}} de la plantilla documentada."""
+    import re
+    from pathlib import Path
+    doc = (Path(__file__).resolve().parents[2] / "docs" / "AVISOS_CITAS.md").read_text(encoding="utf-8")
+    cuerpo = doc.split("```", 2)[1]                         # primer bloque de código = cuerpo de la plantilla
+    en_plantilla = set(re.findall(r"\{\{(\w+)\}\}", cuerpo))
+    assert en_plantilla == set(avc.VARIABLES_PLANTILLA)
+    assert set(avc.parametros({"nombre": "A"}, _evento(), "canceló", "x")) == set(avc.VARIABLES_PLANTILLA)
+    assert set(avc.EJEMPLO_PLANTILLA) == set(avc.VARIABLES_PLANTILLA)
+
+
+def test_envio_de_prueba_usa_plantilla_real(enviados):
+    r = avc.enviar_prueba("999 123 4567")
+    assert r["ok"] and r["numero"] == "529991234567"
+    assert enviados[0]["plantilla"] == "aviso_cita_prospecto"
+    assert set(enviados[0]["params"]) == set(avc.VARIABLES_PLANTILLA)

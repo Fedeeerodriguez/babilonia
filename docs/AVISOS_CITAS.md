@@ -59,6 +59,24 @@ Ejemplo real de cómo se completa:
 | `AVISOS_CITAS_INTERVALO_MIN` | `10` | cada cuántos minutos revisa |
 | `AVISOS_CITAS_VENTANA_HORAS` | `6` | solo citas modificadas en las últimas N horas |
 
+### Verificar la plantilla apenas WATI la apruebe
+Mandá la plantilla real con datos de ejemplo a tu propio WhatsApp:
+
+```
+POST https://plataforma-babilonia-babilonia.qfsutf.easypanel.host/api/tomi/avisos-citas/prueba
+Header:  X-Tomi-Key: <clave interna>
+Body:    {"numero": "5219991234567"}
+```
+
+Tiene que llegarte el mensaje con "Kevin", "Monica Ake (PRUEBA)", "canceló", etc., cada valor en
+su lugar. Si alguna variable aparece vacía o WATI responde error de parámetros, el nombre de
+esa variable no coincide con la plantilla.
+
+**Contrato:** los nombres de las variables viven en `VARIABLES_PLANTILLA`
+(`backend/app/services/tomi/avisos_citas.py`). Si se cambia uno, hay que cambiarlo también en la
+plantilla de WATI y en este documento. El test `test_contrato_plantilla_codigo_y_documentacion`
+falla si no coinciden.
+
 ### Puesta en marcha recomendada
 1. Deploy con `AVISOS_CITAS_ACTIVO=1` y `AVISOS_CITAS_DRY_RUN=1`. Durante 1–2 días revisar
    `GET /api/tomi/avisos-citas` (header `X-Tomi-Key`): muestra qué se **habría** mandado.

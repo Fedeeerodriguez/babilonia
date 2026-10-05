@@ -42,6 +42,18 @@ from app.services.tomi import wati
 log = logging.getLogger("tomi.avisos_citas")
 
 ESTADOS_AVISO = ("Cancelada", "Reagendada")
+
+# CONTRATO con la plantilla de WATI `aviso_cita_prospecto`: estos nombres tienen que ser
+# IDÉNTICOS a las variables {{...}} de la plantilla (y de docs/AVISOS_CITAS.md). Si se cambia
+# uno, cambiarlo en los tres lugares — el test test_contrato_plantilla lo verifica.
+VARIABLES_PLANTILLA = ("nombre", "prospecto", "accion", "fecha_cita", "detalle", "telefono", "correo")
+
+EJEMPLO_PLANTILLA = {
+    "nombre": "Kevin", "prospecto": "Monica Ake (PRUEBA)", "accion": "canceló",
+    "fecha_cita": "mar 06/10 10:00 h",
+    "detalle": "Link para reagendar: https://calendly.com/reschedulings/ejemplo",
+    "telefono": "+52 999 123 4567", "correo": "prospecto@ejemplo.com",
+}
 MAX_INTENTOS = 3
 _DIAS = ("lun", "mar", "mié", "jue", "vie", "sáb", "dom")
 
@@ -151,8 +163,8 @@ def destinatarios(ev: Dict[str, Any]) -> List[Dict[str, str]]:
 
 
 def parametros(dest: Dict[str, str], ev: Dict[str, Any], accion: str, detalle: str) -> Dict[str, str]:
-    """Variables de la plantilla WATI `aviso_cita_prospecto` (ver docs/AVISOS_CITAS.md)."""
-    return {
+    """Variables de la plantilla WATI `aviso_cita_prospecto` (ver VARIABLES_PLANTILLA)."""
+    p = {
         "nombre": (dest.get("nombre") or "").split(" ")[0] or "equipo",
         "prospecto": _uno(ev.get("Nombre del invitado")) or "Un prospecto",
         "accion": accion,
@@ -161,6 +173,17 @@ def parametros(dest: Dict[str, str], ev: Dict[str, Any], accion: str, detalle: s
         "telefono": _uno(ev.get("Teléfono")) or "sin teléfono",
         "correo": _uno(ev.get("Correo invitado")) or "sin correo",
     }
+    return {k: p[k] for k in VARIABLES_PLANTILLA}
+
+
+def enviar_prueba(numero: str) -> Dict[str, Any]:
+    """Manda la plantilla REAL con datos de ejemplo a un número (p. ej. el tuyo) para
+    verificar que cada variable cae en su lugar. Ignora DRY_RUN a propósito."""
+    num = wati.numero_whatsapp(numero)
+    if not num:
+        return {"ok": False, "detalle": "número inválido"}
+    r = wati.enviar_plantilla(num, _plantilla(), dict(EJEMPLO_PLANTILLA), broadcast="avisos_citas_prueba")
+    return {**r, "numero": num, "plantilla": _plantilla(), "variables": dict(EJEMPLO_PLANTILLA)}
 
 
 # ------------------------------------------------------------------ envío con dedup

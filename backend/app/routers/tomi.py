@@ -1375,6 +1375,17 @@ def avisos_citas_escanear(
     return avc.escanear(db, ventana_horas=ventana_horas)
 
 
+class PruebaPlantillaIn(BaseModel):
+    numero: str = Field(..., description="WhatsApp que recibe la prueba, ej. 5219991234567.")
+
+
+@router.post("/avisos-citas/prueba")
+def avisos_citas_prueba(body: PruebaPlantillaIn, x_tomi_key: Optional[str] = Header(default=None)):
+    """Envía la plantilla real con datos de ejemplo al número indicado (verificación manual)."""
+    _auth(x_tomi_key)
+    return avc.enviar_prueba(body.numero)
+
+
 @router.get("/avisos-citas")
 def avisos_citas_listar(
     limit: int = 50,
