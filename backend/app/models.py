@@ -4,7 +4,7 @@ from enum import Enum
 import uuid
 from sqlalchemy import (
     Column, Integer, String, Boolean, DateTime, Text, BigInteger,
-    Enum as SQLEnum, ForeignKey, JSON, Uuid,
+    Enum as SQLEnum, ForeignKey, JSON, Uuid, UniqueConstraint,
 )
 from app.database import Base
 
@@ -203,4 +203,30 @@ class DirectrizAprendida(Base):
     revisada_por = Column(String)                      # admin que aprobó/rechazó
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow, index=True)
     activada_at = Column(DateTime(timezone=True))
+    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class AvisoCita(Base):
+    """Avisos al asesor / centinela cuando un prospecto cancela o reagenda su cita.
+
+    Cada aviso se RESERVA (insert con clave única) antes de enviarse: con varios
+    workers vigilando a la vez, solo uno lo envía. `motivo` = estado del evento en
+    Notion (Cancelada / Reagendada) o "whatsapp:AAAA-MM-DD" cuando el prospecto lo
+    pidió escribiéndole a Tommy.
+    """
+    __tablename__ = "tomi_avisos_citas"
+    __table_args__ = (UniqueConstraint("evento_id", "motivo", "rol", name="uq_aviso_cita"),)
+    id = Column(PK, primary_key=True, autoincrement=True)
+    evento_id = Column(String, nullable=False, index=True)   # page id de "Eventos Calendly"
+    motivo = Column(String, nullable=False)
+    rol = Column(String, nullable=False)                     # asesor | centinela
+    destinatario = Column(String)                            # nombre
+    numero = Column(String)                                  # WhatsApp normalizado
+    prospecto = Column(String)
+    fecha_cita = Column(String)
+    mensaje = Column(Text)                                   # parámetros enviados (legible)
+    estado = Column(String, default="reservado", index=True)  # reservado|enviado|simulado|error|sin_numero
+    intentos = Column(Integer, default=0)
+    resultado = Column(Text)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, index=True)
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)

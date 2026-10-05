@@ -43,6 +43,16 @@ for r in [auth, users, dashboard, metrics, conversations, documents, agent, tomi
     app.include_router(r.router)
 
 
+@app.on_event("startup")
+def _arrancar_vigilantes() -> None:
+    """Vigilante de citas canceladas/reagendadas (solo si AVISOS_CITAS_ACTIVO=1)."""
+    try:
+        from app.services.tomi import avisos_citas
+        avisos_citas.iniciar_vigilante()
+    except Exception as e:  # nunca tirar la app por el vigilante
+        log.warning("No se pudo iniciar el vigilante de avisos de citas: %s", e)
+
+
 @app.exception_handler(Exception)
 async def _unhandled_exception_handler(request: Request, exc: Exception):
     """Ninguna excepción no manejada sale sin loguearse. Los endpoints de Tomi

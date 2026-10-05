@@ -104,6 +104,7 @@ from app.services.tomi import tickets as tk
 from app.services.tomi import interruptor as sw
 from app.services.tomi import alertas as _alertas
 from app.services.tomi import aprendizaje as aprend
+from app.services.tomi import avisos_citas as avc
 from app.services.tomi.cache import notion_cache
 
 router = APIRouter(prefix="/api/tomi", tags=["tomi"], route_class=TomiSafeRoute)
@@ -1338,3 +1339,58 @@ def desactivar_directriz(dir_id: int, body: DirectrizAccionIn, x_tomi_key: Optio
     """Rollback: desactiva una directriz que estaba activa (deja de aplicarse a todos)."""
     _auth(x_tomi_key)
     return _set_estado(db, dir_id, models.DirectrizEstado.desactivada.value, body.revisada_por)
+
+
+# ---------- Avisos de citas (prospecto cancela / reagenda) ----------
+
+class AvisoCitaIn(BaseModel):
+    wa_id: str = Field(..., description="WhatsApp del prospecto (lo pone n8n desde el webhook).")
+    mensaje: Optional[str] = Field(default=None, description="Lo que escribió el prospecto (opcional).")
+    correo: Optional[str] = Field(default=None, description="Correo con el que agendó, si lo dio (opcional).")
+
+
+@router.post("/aviso-cita")
+def aviso_cita(
+    body: AvisoCitaIn,
+    x_tomi_key: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    """El prospecto le escribió a Tommy que no puede ir o quiere cambiar su cita.
+
+    Avisa DIRECTO al asesor y al centinela por WhatsApp (sin pasar por Ceci/Jime) y
+    devuelve fecha, link para reagendar y nombres, para que Tommy le responda al prospecto.
+    """
+    _auth(x_tomi_key)
+    return avc.avisar_por_whatsapp(db, str(body.wa_id), body.mensaje or "", body.correo or "")
+
+
+@router.post("/avisos-citas/escanear")
+def avisos_citas_escanear(
+    ventana_horas: Optional[float] = None,
+    x_tomi_key: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    """Corre el vigilante una vez a mano (útil para probar). Respeta AVISOS_CITAS_DRY_RUN."""
+    _auth(x_tomi_key)
+    return avc.escanear(db, ventana_horas=ventana_horas)
+
+
+@router.get("/avisos-citas")
+def avisos_citas_listar(
+    limit: int = 50,
+    x_tomi_key: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    """Últimos avisos registrados (enviados, simulados, con error o sin número)."""
+    _auth(x_tomi_key)
+    filas = (db.query(models.AvisoCita).order_by(models.AvisoCita.created_at.desc())
+             .limit(max(1, min(limit, 200))).all())
+    return {
+        "activo": avc.activo(), "dry_run": avc.dry_run(),
+        "avisos": [{
+            "creado": f.created_at.isoformat() if f.created_at else None, "motivo": f.motivo,
+            "rol": f.rol, "destinatario": f.destinatario, "prospecto": f.prospecto,
+            "fecha_cita": f.fecha_cita, "estado": f.estado, "intentos": f.intentos,
+            "mensaje": f.mensaje, "resultado": f.resultado,
+        } for f in filas],
+    }
