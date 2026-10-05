@@ -1170,8 +1170,8 @@
       "type": "n8n-nodes-base.httpRequestTool",
       "typeVersion": 4.4,
       "position": [
-        -592,
-        4236
+        -816,
+        4436
       ],
       "id": "aviso_cita_python-id-2026",
       "name": "aviso_cita_python"
