@@ -27,10 +27,12 @@ En WATI → **Broadcast → Template Messages → New Template Message**:
 - **Nombre:** `aviso_cita_prospecto`
 - **Categoría:** Utility
 - **Idioma:** Spanish (MEX)
-- **Cuerpo** (las variables deben llamarse exactamente así):
+- **Pie (footer, opcional):** `Mensaje automático de Tommy`
+- **Botones:** ninguno
+- **Cuerpo** (las variables deben llamarse exactamente así; nunca dos variables pegadas, WhatsApp lo rechaza):
 
 ```
-Hola {{nombre}} 👋 Te aviso que {{prospecto}} {{accion}} su cita del {{fecha_cita}}.
+Hola {{nombre}} 👋 Te aviso que tu prospecto {{prospecto}} ya {{accion}} su cita del {{fecha_cita}}.
 
 {{detalle}}
 
@@ -41,7 +43,7 @@ Contáctalo directamente para coordinar. — Tommy, Babilonia
 ```
 
 Ejemplo real de cómo se completa:
-> Hola Kevin 👋 Te aviso que Monica Ake **canceló** su cita del **mar 06/10 10:00 h**.
+> Hola Kevin 👋 Te aviso que tu prospecto Monica Ake ya **canceló** su cita del **mar 06/10 10:00 h**.
 > Link para reagendar: https://calendly.com/reschedulings/…
 > 📱 Teléfono: +52 … · ✉️ Correo: …
 
