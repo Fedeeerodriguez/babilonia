@@ -91,8 +91,9 @@ def test_escanear_envia_y_no_duplica(db, enviados, monkeypatch):
     assert len(enviados) == 2                               # asesor + centinela, una sola vez
     p = enviados[0]["params"]
     assert p["accion"] == "canceló" and p["prospecto"] == "Laura Prospecto"
-    assert "reagendar" in p["detalle"] and p["telefono"].startswith("+52")
-    assert enviados[0]["numero"] == "529991234567" and p["nombre"] == "Gibran"
+    assert "reagendar" in p["detalle"] and p["telefono_prospecto"].startswith("+52")
+    assert p["correo_prospecto"] == "laura@mail.com"
+    assert enviados[0]["numero"] == "529991234567" and p["name"] == "Gibran"
 
 
 def test_escanear_omite_citas_pasadas(db, enviados, monkeypatch):

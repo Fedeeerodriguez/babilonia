@@ -32,20 +32,22 @@ En WATI → **Broadcast → Template Messages → New Template Message**:
 - **Cuerpo** (las variables deben llamarse exactamente así; nunca dos variables pegadas, WhatsApp lo rechaza):
 
 ```
-Hola {{nombre}} 👋 Te aviso que tu prospecto {{prospecto}} ya {{accion}} su cita del {{fecha_cita}}.
+Hola {{name}} 👋 Te aviso que tu prospecto {{prospecto}} ya {{accion}} su cita del {{fecha_cita}}.
 
 {{detalle}}
 
-📱 Teléfono: {{telefono}}
-✉️ Correo: {{correo}}
+📱 Teléfono: {{telefono_prospecto}}
+✉️ Correo: {{correo_prospecto}}
 
-Contáctalo directamente para coordinar. — Tommy, Babilonia
+Contáctalo directamente para coordinar.
 ```
 
 Ejemplo real de cómo se completa:
 > Hola Kevin 👋 Te aviso que tu prospecto Monica Ake ya **canceló** su cita del **mar 06/10 10:00 h**.
 > Link para reagendar: https://calendly.com/reschedulings/…
 > 📱 Teléfono: +52 … · ✉️ Correo: …
+
+Variables: `name` (primer nombre del asesor o centinela), `prospecto`, `accion`, `fecha_cita`, `detalle`, `telefono_prospecto`, `correo_prospecto`.
 
 ## 2. Variables de entorno (servicio `babilonia`, backend)
 

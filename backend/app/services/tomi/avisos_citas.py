@@ -46,13 +46,13 @@ ESTADOS_AVISO = ("Cancelada", "Reagendada")
 # CONTRATO con la plantilla de WATI `aviso_cita_prospecto`: estos nombres tienen que ser
 # IDÉNTICOS a las variables {{...}} de la plantilla (y de docs/AVISOS_CITAS.md). Si se cambia
 # uno, cambiarlo en los tres lugares — el test test_contrato_plantilla lo verifica.
-VARIABLES_PLANTILLA = ("nombre", "prospecto", "accion", "fecha_cita", "detalle", "telefono", "correo")
+VARIABLES_PLANTILLA = ("name", "prospecto", "accion", "fecha_cita", "detalle", "telefono_prospecto", "correo_prospecto")
 
 EJEMPLO_PLANTILLA = {
-    "nombre": "Kevin", "prospecto": "Monica Ake (PRUEBA)", "accion": "canceló",
+    "name": "Kevin", "prospecto": "Monica Ake (PRUEBA)", "accion": "canceló",
     "fecha_cita": "mar 06/10 10:00 h",
     "detalle": "Link para reagendar: https://calendly.com/reschedulings/ejemplo",
-    "telefono": "+52 999 123 4567", "correo": "prospecto@ejemplo.com",
+    "telefono_prospecto": "+52 999 123 4567", "correo_prospecto": "prospecto@ejemplo.com",
 }
 MAX_INTENTOS = 3
 _DIAS = ("lun", "mar", "mié", "jue", "vie", "sáb", "dom")
@@ -165,13 +165,13 @@ def destinatarios(ev: Dict[str, Any]) -> List[Dict[str, str]]:
 def parametros(dest: Dict[str, str], ev: Dict[str, Any], accion: str, detalle: str) -> Dict[str, str]:
     """Variables de la plantilla WATI `aviso_cita_prospecto` (ver VARIABLES_PLANTILLA)."""
     p = {
-        "nombre": (dest.get("nombre") or "").split(" ")[0] or "equipo",
+        "name": (dest.get("nombre") or "").split(" ")[0] or "equipo",
         "prospecto": _uno(ev.get("Nombre del invitado")) or "Un prospecto",
         "accion": accion,
         "fecha_cita": fecha_legible(_fecha(ev)),
         "detalle": detalle,
-        "telefono": _uno(ev.get("Teléfono")) or "sin teléfono",
-        "correo": _uno(ev.get("Correo invitado")) or "sin correo",
+        "telefono_prospecto": _uno(ev.get("Teléfono")) or "sin teléfono",
+        "correo_prospecto": _uno(ev.get("Correo invitado")) or "sin correo",
     }
     return {k: p[k] for k in VARIABLES_PLANTILLA}
 
