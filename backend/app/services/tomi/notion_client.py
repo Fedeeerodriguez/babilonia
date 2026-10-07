@@ -33,6 +33,11 @@ NOTION_TOKEN = os.getenv("NOTION_TOKEN", "")
 DB_ASESORES = os.getenv("NOTION_DB_ASESORES", "")
 DB_ESTUDIANTES = os.getenv("NOTION_DB_ESTUDIANTES", "")
 DB_CLIENTES = os.getenv("NOTION_DB_CLIENTES", "")
+
+# Camino de una persona en Babilonia: estudiante → cliente Allianz → asesor. Si figura en
+# varias bases, gana el nivel más alto (antes era asesor > estudiante > cliente).
+NIVELES_DE_MAYOR_A_MENOR = ("asesor", "cliente", "estudiante")
+
 DB_EMISIONES = os.getenv("NOTION_DB_EMISIONES", "")
 DB_COBRANZAS = os.getenv("NOTION_DB_COBRANZAS", "")
 DB_DAF = os.getenv("NOTION_DB_DAF", "")
@@ -1048,14 +1053,8 @@ def clasificar_usuarios_batch(emails: List[str]) -> Dict[str, Dict[str, Any]]:
 
     result: Dict[str, Dict[str, Any]] = {}
     for e in emails:
-        if e in indices["asesor"]:
-            result[e] = indices["asesor"][e]
-        elif e in indices["estudiante"]:
-            result[e] = indices["estudiante"][e]
-        elif e in indices["cliente"]:
-            result[e] = indices["cliente"][e]
-        else:
-            result[e] = {"tipo": "prospecto", "data": None}
+        tipo = next((t for t in NIVELES_DE_MAYOR_A_MENOR if e in indices[t]), None)
+        result[e] = indices[tipo][e] if tipo else {"tipo": "prospecto", "data": None}
     return result
 
 
@@ -1209,7 +1208,7 @@ def clasificar_usuario_por_email(email: str) -> Dict[str, Any]:
                 log.warning("clasificar: fallo consulta %s (%s): %s", tipo, type(e).__name__, e)
                 resultados[tipo] = []
 
-    for tipo in ("asesor", "estudiante", "cliente"):
+    for tipo in NIVELES_DE_MAYOR_A_MENOR:
         rows = resultados.get(tipo) or []
         if rows:
             return {"tipo": tipo, "data": rows[0]}
@@ -1300,7 +1299,7 @@ def clasificar_usuario_por_telefono(phone: str) -> Dict[str, Any]:
                 resultados[tipo] = []
 
     resultado: Dict[str, Any] = {"tipo": "prospecto", "data": None}
-    for tipo in ("asesor", "estudiante", "cliente"):
+    for tipo in NIVELES_DE_MAYOR_A_MENOR:
         rows = resultados.get(tipo) or []
         if rows:
             resultado = {"tipo": tipo, "data": rows[0]}

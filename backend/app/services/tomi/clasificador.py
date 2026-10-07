@@ -12,17 +12,40 @@ Flujo:
 
 Salida compatible con el AI Agent2:
   { "comando_1": "registrado"|"no registrado", "comando_2": "asesor|estudiante|cliente|prospecto" }
+
+NIVEL FIJO (regla de negocio): el camino es estudiante → cliente Allianz → asesor. Una vez que
+un número tiene un nivel real (estudiante/cliente/asesor) ese nivel queda FIJO en todas las
+ejecuciones: nunca baja y nunca cambia por un email que aparezca en el mensaje (un asesor que
+escribe el correo de un cliente sigue siendo el asesor). Solo puede SUBIR, cuando Notion lo
+encuentra por su propio teléfono en un nivel más alto. Para corregir un error a mano:
+DELETE /api/tomi/clasificar-usuario/{user_id}.
 """
 from __future__ import annotations
 
 import json
 import re
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.services.tomi import notion_client as nc
+
+# Nivel de cada categoría. prospecto/desconocido = 0 (todavía sin nivel fijo).
+NIVEL = {"desconocido": 0, "prospecto": 0, "estudiante": 1, "cliente": 2, "asesor": 3}
+# Cada cuánto se revisa si alguien con nivel fijo SUBIÓ (p. ej. un cliente que pasó a asesor).
+HORAS_REVISION_ASCENSO = 24
+
+
+def nivel(comando_2: Optional[str]) -> int:
+    return NIVEL.get((comando_2 or "").strip().lower(), 0)
+
+
+def es_fijo(comando_2: Optional[str]) -> bool:
+    """True si la categoría ya es un nivel real (estudiante/cliente/asesor): no se puede bajar."""
+    return nivel(comando_2) > 0
+
 
 EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 
@@ -69,9 +92,15 @@ def guardar_clasificacion(
     user_nombre: Optional[str] = None,
     notion_page_id: Optional[str] = None,
     data: Optional[Dict[str, Any]] = None,
-) -> None:
+) -> bool:
+    """Guarda la clasificación del número. Devuelve False si NO se guardó porque bajaría de
+    nivel: un número con nivel fijo nunca se pisa con uno menor (venga de donde venga)."""
     if not _table_exists(db):
-        return
+        return False
+    actual = db.execute(text("SELECT comando_2 FROM tomi_clasificaciones WHERE user_id = :uid"),
+                        {"uid": str(user_id)}).scalar()
+    if actual is not None and nivel(comando_2) < nivel(actual):
+        return False
     db.execute(text("""
         INSERT INTO tomi_clasificaciones
           (user_id, email, comando_1, comando_2, user_nombre, notion_page_id, data, updated_at)
@@ -94,6 +123,70 @@ def guardar_clasificacion(
         "data": json.dumps(data or {}, default=str, ensure_ascii=False),
     })
     db.commit()
+    return True
+
+
+def _marcar_revisado(db: Session, user_id: str) -> None:
+    """Corre el reloj de la revisión de ascenso sin tocar la clasificación."""
+    db.execute(text("UPDATE tomi_clasificaciones SET updated_at = now() WHERE user_id = :uid"),
+               {"uid": str(user_id)})
+    db.commit()
+
+
+def _vencida(updated_at: Any) -> bool:
+    if not isinstance(updated_at, datetime):
+        return True
+    ts = updated_at if updated_at.tzinfo else updated_at.replace(tzinfo=timezone.utc)
+    return datetime.now(timezone.utc) - ts > timedelta(hours=HORAS_REVISION_ASCENSO)
+
+
+def _datos_notion(bucket: Dict[str, Any]) -> Dict[str, Any]:
+    data = bucket.get("data") if isinstance(bucket.get("data"), dict) else {}
+    return {
+        "data": data,
+        "email": (data.get("Correo") or "").strip().lower(),
+        "nombre": (data.get("Nombre Completo") or data.get("Nombre completo")
+                   or data.get("Nombre del Cliente") or data.get("_title")),
+        "page_id": data.get("id") or data.get("_id"),
+    }
+
+
+def _respuesta_cache(cached: Dict[str, Any], fuente: str = "cache") -> Dict[str, Any]:
+    return {
+        "comando_1": cached["comando_1"],
+        "comando_2": cached["comando_2"],
+        "email": cached["email"],
+        "user_id": cached["user_id"],
+        "user_nombre": cached.get("user_nombre"),
+        "fuente": fuente,
+        "data": cached.get("data"),
+    }
+
+
+def _revisar_ascenso(db: Session, cached: Dict[str, Any], user_nombre: Optional[str]) -> Dict[str, Any]:
+    """Nivel fijo: se devuelve el guardado. Cada HORAS_REVISION_ASCENSO se mira en Notion (por
+    el teléfono del propio número) si SUBIÓ de nivel; si subió, se guarda el nivel nuevo.
+    Nunca baja: si Notion falla o devuelve menos, queda el que estaba."""
+    uid = str(cached["user_id"])
+    if nivel(cached.get("comando_2")) >= NIVEL["asesor"] or not _vencida(cached.get("updated_at")):
+        return _respuesta_cache(cached)
+    try:
+        bucket = nc.clasificar_usuario_por_telefono(uid)
+    except Exception:
+        bucket = {"tipo": "prospecto", "data": None}
+    tipo = bucket.get("tipo")
+    if nivel(tipo) > nivel(cached.get("comando_2")):
+        d = _datos_notion(bucket)
+        guardar_clasificacion(db, user_id=uid, email=d["email"] or cached.get("email") or "",
+                              comando_1="registrado", comando_2=tipo,
+                              user_nombre=user_nombre or d["nombre"] or cached.get("user_nombre"),
+                              notion_page_id=d["page_id"], data=d["data"] or None)
+        return {"comando_1": "registrado", "comando_2": tipo,
+                "email": d["email"] or cached.get("email"), "user_id": cached["user_id"],
+                "user_nombre": user_nombre or d["nombre"] or cached.get("user_nombre"),
+                "fuente": "ascenso", "data": d["data"] or None}
+    _marcar_revisado(db, uid)
+    return _respuesta_cache(cached)
 
 
 def clasificar(
@@ -116,32 +209,18 @@ def clasificar(
     # dando un email NUEVO (distinto al que teníamos cacheado para su número).
     email_norm = (email or "").strip().lower() or extraer_email(mensaje_usuario or "")
 
-    # A) caché por user_id. Cortamos con la identidad cacheada SÓLO si:
-    #    - NO viene un email nuevo distinto al cacheado, y
-    #    - ya hay un ROL REAL resuelto (asesor/estudiante/cliente).
-    # Si el usuario da un email NUEVO y DISTINTO al cacheado, NO confiamos en el caché:
-    # re-clasificamos con ese email. Evita quedar "pegado" a una identidad vieja del
-    # mismo número (bug + riesgo de privacidad). Un 'prospecto' cacheado tampoco corta:
-    # puede mejorar por email o teléfono.
+    # A) NIVEL FIJO. Si el número ya tiene un nivel real (estudiante/cliente/asesor), ése
+    #    es su nivel en TODAS las ejecuciones: un email en el mensaje NO lo re-clasifica
+    #    (antes, un asesor que escribía el correo de un cliente quedaba guardado como ese
+    #    cliente). Solo puede subir (ver _revisar_ascenso). `force` tampoco lo baja.
+    #    Un prospecto guardado no es fijo: puede mejorar por email o teléfono.
     cache_previa: Optional[Dict[str, Any]] = None
-    if not force and user_id:
+    if user_id:
         cached = buscar_cache(db, user_id=str(user_id), email=None)
-        if cached:
-            cached_email = (cached.get("email") or "").strip().lower()
-            da_email_nuevo = bool(email_norm and email_norm != cached_email)
-            if not da_email_nuevo:
-                if cached.get("comando_2") in ("asesor", "estudiante", "cliente"):
-                    return {
-                        "comando_1": cached["comando_1"],
-                        "comando_2": cached["comando_2"],
-                        "email": cached["email"],
-                        "user_id": cached["user_id"],
-                        "user_nombre": cached.get("user_nombre"),
-                        "fuente": "cache",
-                        "data": cached.get("data"),
-                    }
-                cache_previa = cached  # prospecto/desconocido: fallback si no mejoramos
-            # si da_email_nuevo: seguimos de largo y re-clasificamos con email_norm
+        if cached and es_fijo(cached.get("comando_2")):
+            return _revisar_ascenso(db, cached, user_nombre)
+        if cached and not force:
+            cache_previa = cached  # prospecto: fallback si no mejoramos
 
     if not email_norm:
         # B.1) Identificar por TELÉFONO: el user_id ES el waId de WhatsApp. Muchos
@@ -155,15 +234,8 @@ def clasificar(
                 bucket = {"tipo": "prospecto", "data": None}
             tipo = bucket.get("tipo")
             if tipo and tipo != "prospecto":
-                data = bucket.get("data") if isinstance(bucket.get("data"), dict) else {}
-                email_rec = (data.get("Correo") or "").strip().lower()
-                nombre_rec = (
-                    data.get("Nombre Completo")
-                    or data.get("Nombre completo")
-                    or data.get("Nombre del Cliente")
-                    or data.get("_title")
-                )
-                notion_page_id = data.get("id") or data.get("_id")
+                d = _datos_notion(bucket)
+                data, email_rec, nombre_rec, notion_page_id = d["data"], d["email"], d["nombre"], d["page_id"]
                 guardar_clasificacion(
                     db,
                     user_id=str(user_id),
@@ -205,10 +277,12 @@ def clasificar(
                      "fuente": "sin_email", "necesita_email": True, "data": None}
         return resultado
 
-    # C) cache por email (otro chat con el mismo correo)
+    # C) cache por email (otro chat con el mismo correo). Solo si ese correo ya tiene un nivel
+    #    real: un 'prospecto' guardado puede venir de una falla momentánea de Notion, así que
+    #    se vuelve a consultar (antes quedaba trabado como prospecto para siempre).
     if not force:
         cached = buscar_cache(db, user_id=None, email=email_norm)
-        if cached:
+        if cached and es_fijo(cached.get("comando_2")):
             # asociamos este user_id al mismo resultado
             if user_id:
                 guardar_clasificacion(
