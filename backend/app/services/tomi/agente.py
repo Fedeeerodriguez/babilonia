@@ -280,6 +280,14 @@ def _tools_schema() -> List[Dict[str, Any]]:
 # búsquedas por nombre de otras personas.
 _MODOS_CLIENTE = {"perfil", "polizas", "cobranzas", "eventos", "completo"}
 _INCLUIR_CLIENTE = {"usuarios", "emisiones", "cobranzas", "tickets_allianz", "calendly", "productos"}
+# Qué trae cada modo para un cliente (lo mismo que bd.consultar, sin carteras ni nombres).
+_INCLUIR_POR_MODO = {
+    "perfil": {"usuarios"},
+    "polizas": {"usuarios", "emisiones"},
+    "cobranzas": {"usuarios", "emisiones", "cobranzas"},
+    "eventos": {"usuarios", "calendly"},
+    "completo": {"usuarios", "emisiones"},
+}
 
 AVISO_CLIENTE = (
     "ALCANCE: el usuario es un CLIENTE. Las herramientas SOLO devuelven SUS propios datos "
@@ -303,6 +311,16 @@ def _consulta_de_cliente(args: Dict[str, Any], alcance: Dict[str, Any], wa_id: O
     del propio cliente."""
     modo = args.get("modo") if args.get("modo") in _MODOS_CLIENTE else "polizas"
     incluir = [i for i in (args.get("incluir") or []) if i in _INCLUIR_CLIENTE] or None
+    if incluir is None:
+        # El texto NO se usa para buscar (de ahí saldrían correos/nombres de terceros), pero sí
+        # para saber de QUÉ TEMA pregunta. Sin esto, "¿tienen seguro de auto?" no traía el
+        # catálogo y Tommy respondía que no existía.
+        temas = bd._detectar_intents(args.get("mensaje") or "")
+        incluir = list(_INCLUIR_POR_MODO.get(modo, {"usuarios", "emisiones"}))
+        for tema, bloque in (("productos", "productos"), ("cobranza", "cobranzas"),
+                             ("tickets", "tickets_allianz"), ("calendly", "calendly")):
+            if temas.get(tema) and bloque not in incluir:
+                incluir.append(bloque)
     res = bd.consultar(
         mensaje="",
         email_cliente=alcance.get("email"),

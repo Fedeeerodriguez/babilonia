@@ -171,3 +171,20 @@ def test_fuera_del_demo_no_hay_lista(db, notion):
     notion["por_email"] = {"a@x.com": "asesor"}
     _c(db, "a@x.com")
     assert "nota_sistema" not in _c(db, "MENU")
+
+
+# ------------------------------------------------------------------ temas del cliente
+@pytest.mark.parametrize("pregunta,bloque", [
+    ("¿Tienen seguro de auto? Listame el catálogo de productos", "productos"),
+    ("¿estoy al corriente con mis pagos? cobranza", "cobranzas"),
+])
+def test_cliente_recibe_el_tema_que_pregunta_sin_buscar_terceros(monkeypatch, pregunta, bloque):
+    # Bug real: con el texto en blanco no venía el catálogo y Tommy decía que no había auto.
+    llamadas = []
+    monkeypatch.setattr(bd, "consultar", lambda **kw: llamadas.append(kw) or {})
+    alcance = ag.alcance_de({"comando_2": "cliente", "email": "c@x.com"})
+    ag._dispatch("consultar_bases", {"mensaje": f"{pregunta} y lo de juan@otro.com",
+                                     "modo": "completo"}, alcance=alcance)
+    kw = llamadas[0]
+    assert bloque in kw["incluir"] and "usuarios" in kw["incluir"]
+    assert kw["mensaje"] == "" and kw["email_cliente"] == "c@x.com" and not kw.get("emails")
