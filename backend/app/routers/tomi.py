@@ -99,6 +99,7 @@ from app.services.tomi import memorias as mem
 from app.services.tomi import memorias_bd as mbd
 from app.services.tomi import agente_memorias as ag_mem
 from app.services.tomi import clasificador as clasif
+from app.services.tomi import demo
 from app.services.tomi import notion_scanner as nscan
 from app.services.tomi import tickets as tk
 from app.services.tomi import interruptor as sw
@@ -521,11 +522,20 @@ def agente_llm(
     if not sw.is_enabled(db):  # defensa en profundidad: el agente mismo se niega
         return {"respuesta": "", "pausado": True, "error": "automatización en pausa"}
     hist = [{"role": h.role, "content": _clean_utf8(h.content)} for h in (body.historial or [])]
+    # Alcance por quién escribe (lo decide el backend, no el LLM): un CLIENTE (real o demo)
+    # solo ve sus propios datos. Sin wa_id no se puede saber quién es → comportamiento previo.
+    alcance = None
+    if body.wa_id:
+        try:
+            alcance = ag.alcance_de(clasif.buscar_cache(db, user_id=str(body.wa_id), email=None))
+        except Exception as ex:  # noqa: BLE001
+            log.warning("no se pudo resolver el alcance de %s: %s", body.wa_id, ex)
     return ag.responder(
         mensaje=_clean_utf8(body.mensaje),
         historial=hist,
         wa_id=body.wa_id,
         max_iter=body.max_iter,
+        alcance=alcance,
     )
 
 
@@ -609,10 +619,22 @@ def crear_ticket(
     _auth(x_tomi_key)
     if not sw.is_enabled(db):
         return {"ok": False, "pausado": True, "error": "automatización en pausa"}
+    encargado, asunto, descripcion = body.encargado, body.asunto, body.descripcion
+    # Usuario DEMO: el ticket se crea igual (para que la prueba sea de punta a punta) pero
+    # marcado [DEMO] y SIN encargado → no se asigna ni se notifica a nadie del equipo.
+    if body.wa_id:
+        try:
+            fila = clasif.buscar_cache(db, user_id=str(body.wa_id), email=None)
+        except Exception:  # noqa: BLE001
+            fila = None
+        if demo.es_demo(fila):
+            encargado = None
+            asunto = f"[DEMO] {asunto or 'Prueba'}"
+            descripcion = f"[DEMO — prueba de Tommy, no requiere acción] {descripcion}"
     return tk.crear_ticket(
-        descripcion=body.descripcion,
-        asunto=body.asunto,
-        encargado=body.encargado,
+        descripcion=descripcion,
+        asunto=asunto,
+        encargado=encargado,
         nombre_cliente=body.nombre_cliente,
         email=body.email,
         telefono=body.telefono,

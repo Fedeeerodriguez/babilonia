@@ -276,12 +276,61 @@ def _tools_schema() -> List[Dict[str, Any]]:
     ]
 
 
-def _dispatch(name: str, args: Dict[str, Any], wa_id: Optional[str] = None) -> Any:
+# Lo que un CLIENTE puede pedir sobre sí mismo. Nada de carteras, listas de clientes ni
+# búsquedas por nombre de otras personas.
+_MODOS_CLIENTE = {"perfil", "polizas", "cobranzas", "eventos", "completo"}
+_INCLUIR_CLIENTE = {"usuarios", "emisiones", "cobranzas", "tickets_allianz", "calendly", "productos"}
+
+AVISO_CLIENTE = (
+    "ALCANCE: el usuario es un CLIENTE. Las herramientas SOLO devuelven SUS propios datos "
+    "(sus pólizas, pagos y trámites). Si pregunta por otra persona, otro cliente, otro correo o "
+    "una póliza que no es suya, respondé que por privacidad no podés compartir datos de "
+    "terceros, sin buscar ni confirmar si existen."
+)
+
+
+def alcance_de(clasificacion: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """Alcance de datos según quién escribe. None = sin restricción (asesores y equipo).
+    Un CLIENTE (real o demo) solo puede ver lo suyo: se ata a SU correo, no a lo que pida."""
+    if not clasificacion or str(clasificacion.get("comando_2") or "").lower() != "cliente":
+        return None
+    return {"rol": "cliente", "email": (clasificacion.get("email") or "").strip().lower() or None}
+
+
+def _consulta_de_cliente(args: Dict[str, Any], alcance: Dict[str, Any], wa_id: Optional[str]) -> Any:
+    """`consultar_bases` para un cliente: ignora emails/pólizas/nombres que mande la IA (y el
+    texto del mensaje, del que bd.consultar también extrae entidades) y busca SOLO por el correo
+    del propio cliente."""
+    modo = args.get("modo") if args.get("modo") in _MODOS_CLIENTE else "polizas"
+    incluir = [i for i in (args.get("incluir") or []) if i in _INCLUIR_CLIENTE] or None
+    res = bd.consultar(
+        mensaje="",
+        email_cliente=alcance.get("email"),
+        incluir=incluir,
+        modo=modo,
+        solo_activas=bool(args.get("solo_activas") or False),
+        limite=min(int(args.get("limite") or 50), 50),
+        telefono=wa_id,
+    )
+    if isinstance(res, dict):
+        res["alcance"] = "solo datos del propio cliente"
+    return res
+
+
+def _dispatch(name: str, args: Dict[str, Any], wa_id: Optional[str] = None,
+              alcance: Optional[Dict[str, Any]] = None) -> Any:
     """Ejecuta una tool por nombre y devuelve resultado serializable.
 
     `wa_id` (número de WhatsApp del usuario) se inyecta desde el backend — el LLM no
     lo conoce — para poder ubicar la reunión/liga de Zoom del usuario en Calendly por
-    su teléfono, incluso si es un prospecto sin correo."""
+    su teléfono, incluso si es un prospecto sin correo.
+
+    `alcance` (ver `alcance_de`) lo fija el backend según la clasificación del número: con
+    un cliente, las tools solo devuelven sus propios datos, pida lo que pida el LLM."""
+    if alcance and alcance.get("rol") == "cliente":
+        if name == "consultar_bases":
+            return _consulta_de_cliente(args, alcance, wa_id)
+        return {"error": "No disponible: por privacidad solo se consultan los datos del propio cliente."}
     if name == "consultar_bases":
         return bd.consultar(
             mensaje=args.get("mensaje", ""),
@@ -336,6 +385,7 @@ def responder(
     historial: Optional[List[Dict[str, str]]] = None,
     wa_id: Optional[str] = None,
     max_iter: int = 5,
+    alcance: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Loop de tool-calling — sub-agente de bases de datos para Tommy.
 
@@ -360,6 +410,8 @@ def responder(
     tools = _tools_schema()
 
     messages: List[Dict[str, Any]] = [{"role": "system", "content": SYSTEM_PROMPT}]
+    if alcance and alcance.get("rol") == "cliente":
+        messages.append({"role": "system", "content": AVISO_CLIENTE})
     if historial:
         # historial esperado: [{role: user|assistant, content: ...}]
         for h in historial[-10:]:  # últimos 10 turnos
@@ -425,7 +477,7 @@ def responder(
                 args = {}
             log.info("tool: %s args=%s", tc.function.name, args)
             try:
-                result = _dispatch(tc.function.name, args, wa_id=wa_id)
+                result = _dispatch(tc.function.name, args, wa_id=wa_id, alcance=alcance)
             except Exception as e:
                 log.error("dispatch falló: %s", e)
                 result = {"error": str(e)}

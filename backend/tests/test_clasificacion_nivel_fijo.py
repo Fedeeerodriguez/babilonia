@@ -51,6 +51,9 @@ class FakeDB:
                                     "comando_2": p["c2"], "user_nombre": p["nom"] or previo.get("user_nombre"),
                                     "data": p["data"], "updated_at": datetime.now(timezone.utc)}
             return _Res()
+        if q.startswith("DELETE FROM tomi_clasificaciones"):
+            self.filas.pop(p["uid"], None)
+            return _Res()
         if q.startswith("UPDATE tomi_clasificaciones SET updated_at"):
             self.filas[p["uid"]]["updated_at"] = datetime.now(timezone.utc)
             return _Res()

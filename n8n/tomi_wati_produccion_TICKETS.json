@@ -127,7 +127,7 @@
     {
       "parameters": {
         "promptType": "define",
-        "text": "=recibes el siguiente mensaje: {{ $('Redis9').first().json.mensajes }}\nestas hablando con un: {{ $json.comando_2 }}\nuser_id: {{ $json.user_id }}\n",
+        "text": "=recibes el siguiente mensaje: {{ $('Redis9').first().json.mensajes }}\nestas hablando con un: {{ $json.comando_2 }}\nuser_id: {{ $json.user_id }}{{ $json.nota_sistema ? '\\n' + $json.nota_sistema : '' }}",
         "hasOutputParser": true,
         "needsFallback": true,
         "options": {
@@ -423,6 +423,10 @@
             {
               "name": "mensaje",
               "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters0_Value', `Consulta DETALLADA que queres que el sub-agente de bases de datos resuelva. Inclui TODO el contexto relevante: email del usuario, numeros de poliza (PLU3-XXX), nombres de clientes/asesores, y la accion concreta (buscar, listar, contar, verificar). NO pases el mensaje del usuario tal cual; reformulalo con el contexto. Si te falta un dato clave, pediselo al usuario primero.`, 'string') }}"
+            },
+            {
+              "name": "wa_id",
+              "value": "={{ String($('Edit Fields1').first().json.message.chat.id) }}"
             }
           ]
         },

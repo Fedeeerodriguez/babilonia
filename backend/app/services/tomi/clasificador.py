@@ -30,6 +30,7 @@ from typing import Any, Dict, Optional
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.services.tomi import demo
 from app.services.tomi import notion_client as nc
 
 # Nivel de cada categoría. prospecto/desconocido = 0 (todavía sin nivel fijo).
@@ -92,14 +93,16 @@ def guardar_clasificacion(
     user_nombre: Optional[str] = None,
     notion_page_id: Optional[str] = None,
     data: Optional[Dict[str, Any]] = None,
+    permitir_bajar: bool = False,
 ) -> bool:
     """Guarda la clasificación del número. Devuelve False si NO se guardó porque bajaría de
-    nivel: un número con nivel fijo nunca se pisa con uno menor (venga de donde venga)."""
+    nivel: un número con nivel fijo nunca se pisa con uno menor (venga de donde venga).
+    `permitir_bajar` es SOLO para entrar/salir del modo demo (explícito y con contraseña)."""
     if not _table_exists(db):
         return False
     actual = db.execute(text("SELECT comando_2 FROM tomi_clasificaciones WHERE user_id = :uid"),
                         {"uid": str(user_id)}).scalar()
-    if actual is not None and nivel(comando_2) < nivel(actual):
+    if not permitir_bajar and actual is not None and nivel(comando_2) < nivel(actual):
         return False
     db.execute(text("""
         INSERT INTO tomi_clasificaciones
@@ -168,6 +171,8 @@ def _revisar_ascenso(db: Session, cached: Dict[str, Any], user_nombre: Optional[
     el teléfono del propio número) si SUBIÓ de nivel; si subió, se guarda el nivel nuevo.
     Nunca baja: si Notion falla o devuelve menos, queda el que estaba."""
     uid = str(cached["user_id"])
+    if demo.es_demo(cached):          # en modo demo es el cliente demo, no se re-evalúa
+        return _respuesta_cache(cached, fuente="demo")
     if nivel(cached.get("comando_2")) >= NIVEL["asesor"] or not _vencida(cached.get("updated_at")):
         return _respuesta_cache(cached)
     try:
@@ -189,7 +194,71 @@ def _revisar_ascenso(db: Session, cached: Dict[str, Any], user_nombre: Optional[
     return _respuesta_cache(cached)
 
 
+def _borrar(db: Session, user_id: str) -> None:
+    db.execute(text("DELETE FROM tomi_clasificaciones WHERE user_id = :uid"), {"uid": str(user_id)})
+    db.commit()
+
+
+def _modo_demo(db: Session, comando: tuple, user_id: str, user_nombre: Optional[str]) -> Optional[Dict[str, Any]]:
+    """Entrar/salir del modo demo. Devuelve la respuesta del clasificador, o None si hay que
+    seguir con la clasificación normal (con `nota_sistema` agregada por el que llama)."""
+    cached = buscar_cache(db, user_id=user_id, email=None)
+    if comando[0] == "entrar":
+        if not demo.credenciales_validas(comando[1], comando[2]):
+            return None
+        guardar_clasificacion(db, user_id=user_id, email=demo.email(), comando_1="registrado",
+                              comando_2="cliente", user_nombre=demo.nombre(), notion_page_id=None,
+                              data=demo.datos_demo(cached), permitir_bajar=True)
+        return {"comando_1": "registrado", "comando_2": "cliente", "email": demo.email(),
+                "user_id": user_id, "user_nombre": demo.nombre(), "fuente": "demo",
+                "demo": True, "nota_sistema": demo.NOTA_BIENVENIDA.format(nombre=demo.nombre())}
+    # salir
+    if not demo.es_demo(cached):
+        return None
+    ant = demo.previo(cached)
+    if ant and ant.get("comando_2"):
+        guardar_clasificacion(db, user_id=user_id, email=ant.get("email") or "",
+                              comando_1=ant.get("comando_1") or "registrado",
+                              comando_2=ant["comando_2"], user_nombre=ant.get("user_nombre"),
+                              notion_page_id=None, data=ant.get("data") or None, permitir_bajar=True)
+        res = {"comando_1": ant.get("comando_1") or "registrado", "comando_2": ant["comando_2"],
+               "email": ant.get("email"), "user_id": user_id, "user_nombre": ant.get("user_nombre"),
+               "fuente": "demo_salida"}
+    else:
+        _borrar(db, user_id)          # no era nadie antes: vuelve a desconocido
+        res = {"comando_1": "no registrado", "comando_2": "desconocido", "email": None,
+               "user_id": user_id, "user_nombre": user_nombre, "fuente": "demo_salida",
+               "necesita_email": True}
+    res["nota_sistema"] = demo.NOTA_SALIDA
+    return res
+
+
 def clasificar(
+    db: Session,
+    *,
+    user_id: Optional[str] = None,
+    mensaje_usuario: Optional[str] = None,
+    email: Optional[str] = None,
+    user_nombre: Optional[str] = None,
+    force: bool = False,
+) -> Dict[str, Any]:
+    """Clasifica el número. Primero atiende los comandos del modo demo (DEMO <usuario>
+    <clave> / SALIR DEMO); si no hay, sigue con la clasificación normal (`_clasificar`)."""
+    comando = demo.detectar_comando(mensaje_usuario) if user_id and demo.activo() else None
+    if comando:
+        res = _modo_demo(db, comando, str(user_id), user_nombre)
+        if res:
+            return res
+        nota = demo.NOTA_CLAVE_MAL if comando[0] == "entrar" else demo.NOTA_SALIDA_SIN_DEMO
+        res = _clasificar(db, user_id=user_id, mensaje_usuario="", email=email,
+                          user_nombre=user_nombre, force=force)
+        res["nota_sistema"] = nota
+        return res
+    return _clasificar(db, user_id=user_id, mensaje_usuario=mensaje_usuario, email=email,
+                       user_nombre=user_nombre, force=force)
+
+
+def _clasificar(
     db: Session,
     *,
     user_id: Optional[str] = None,
