@@ -119,3 +119,46 @@ def test_cliente_no_puede_abrir_paginas_de_notion(monkeypatch):
 def test_asesor_sin_restriccion():
     assert ag.alcance_de({"comando_2": "asesor", "email": "a@x.com"}) is None
     assert ag.alcance_de(None) is None
+
+
+# ------------------------------------------------------------------ asesor demo
+def test_registro_asesor_demo(db, notion):
+    r = _c(db, f"DEMO ASESOR demo.babilonia {CLAVE}")
+    assert r["comando_2"] == "asesor" and r["email"] == demo.ASESOR_EMAIL_DEFAULT
+    assert "asesor ficticio" in r["nota_sistema"]
+    assert _c(db, "hola")["comando_2"] == "asesor"
+    assert demo.es_asesor_demo(db.filas[WA] | {"data": __import__("json").loads(db.filas[WA]["data"])})
+
+
+def test_escribir_el_correo_demo_a_mano_no_da_acceso(db, notion):
+    # Notion encuentra asesor.demo@… como asesor REAL: sin el comando DEMO no debe servir.
+    notion["por_email"] = {demo.ASESOR_EMAIL_DEFAULT: "asesor", demo.EMAIL_DEFAULT: "cliente"}
+    assert _c(db, f"soy {demo.ASESOR_EMAIL_DEFAULT}")["comando_2"] == "desconocido"
+    assert _c(db, f"mi correo es {demo.EMAIL_DEFAULT}")["comando_2"] == "desconocido"
+
+
+def test_fila_demo_no_se_copia_a_otro_numero_por_correo(db, notion):
+    _c(db, f"DEMO ASESOR demo.babilonia {CLAVE}")
+    otro = clf.clasificar(db, user_id="5219999999999", mensaje_usuario=demo.ASESOR_EMAIL_DEFAULT)
+    assert otro["comando_2"] != "asesor"
+
+
+def test_asesor_demo_solo_ve_su_cartera_ficticia(monkeypatch):
+    llamadas = []
+    monkeypatch.setattr(bd, "consultar", lambda **kw: llamadas.append(kw) or {})
+    alcance = ag.alcance_de({"comando_2": "asesor", "data": {"demo": True, "demo_rol": "asesor"}})
+    assert alcance["rol"] == "asesor_demo"
+    # pide la cartera de otro asesor → recibe la suya
+    ag._dispatch("consultar_bases", {"mensaje": "x", "modo": "cartera",
+                                     "email_asesor": "jime@babilonia.ai"}, alcance=alcance)
+    assert llamadas[-1]["email_asesor"] == demo.ASESOR_EMAIL_DEFAULT
+    # pide un cliente real + uno de su cartera → solo pasa el de su cartera
+    ag._dispatch("consultar_bases", {"mensaje": "x", "modo": "polizas",
+                                     "emails": ["real@gmail.com", "cliente2.demo@example.com"],
+                                     "polizas": ["PLU3-129258", "DEMO-PROT-000003"]}, alcance=alcance)
+    assert llamadas[-1]["emails"] == ["cliente2.demo@example.com"]
+    assert llamadas[-1]["polizas"] == ["DEMO-PROT-000003"]
+    # solo pide cosas reales → cae a su cartera, nunca a la búsqueda pedida
+    ag._dispatch("consultar_bases", {"mensaje": "x", "modo": "completo",
+                                     "emails": ["real@gmail.com"]}, alcance=alcance)
+    assert llamadas[-1]["modo"] == "cartera" and "emails" not in llamadas[-1]

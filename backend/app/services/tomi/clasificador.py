@@ -204,14 +204,21 @@ def _modo_demo(db: Session, comando: tuple, user_id: str, user_nombre: Optional[
     seguir con la clasificación normal (con `nota_sistema` agregada por el que llama)."""
     cached = buscar_cache(db, user_id=user_id, email=None)
     if comando[0] == "entrar":
-        if not demo.credenciales_validas(comando[1], comando[2]):
+        _, rol, usuario, clave = comando
+        if not demo.credenciales_validas(usuario, clave):
             return None
-        guardar_clasificacion(db, user_id=user_id, email=demo.email(), comando_1="registrado",
-                              comando_2="cliente", user_nombre=demo.nombre(), notion_page_id=None,
-                              data=demo.datos_demo(cached), permitir_bajar=True)
-        return {"comando_1": "registrado", "comando_2": "cliente", "email": demo.email(),
-                "user_id": user_id, "user_nombre": demo.nombre(), "fuente": "demo",
-                "demo": True, "nota_sistema": demo.NOTA_BIENVENIDA.format(nombre=demo.nombre())}
+        if rol == "asesor":
+            correo, nombre = demo.asesor_email(), demo.asesor_nombre()
+            nota = demo.NOTA_BIENVENIDA_ASESOR.format(nombre=nombre, correo=correo)
+        else:
+            correo, nombre = demo.email(), demo.nombre()
+            nota = demo.NOTA_BIENVENIDA.format(nombre=nombre)
+        guardar_clasificacion(db, user_id=user_id, email=correo, comando_1="registrado",
+                              comando_2=rol, user_nombre=nombre, notion_page_id=None,
+                              data=demo.datos_demo(cached, rol), permitir_bajar=True)
+        return {"comando_1": "registrado", "comando_2": rol, "email": correo,
+                "user_id": user_id, "user_nombre": nombre, "fuente": "demo",
+                "demo": True, "nota_sistema": nota}
     # salir
     if not demo.es_demo(cached):
         return None
@@ -277,6 +284,11 @@ def _clasificar(
     # Extraemos el email ANTES de mirar el caché, para detectar si el usuario está
     # dando un email NUEVO (distinto al que teníamos cacheado para su número).
     email_norm = (email or "").strip().lower() or extraer_email(mensaje_usuario or "")
+    # Los correos de las cuentas demo SOLO se usan con el comando DEMO (con contraseña). Si
+    # alguien escribe asesor.demo@… a mano, Notion lo encontraría como asesor REAL y sin
+    # restricción → se ignoran como si no hubiera dado correo.
+    if email_norm and email_norm in demo.correos_demo():
+        email_norm = None
 
     # A) NIVEL FIJO. Si el número ya tiene un nivel real (estudiante/cliente/asesor), ése
     #    es su nivel en TODAS las ejecuciones: un email en el mensaje NO lo re-clasifica
@@ -351,7 +363,8 @@ def _clasificar(
     #    se vuelve a consultar (antes quedaba trabado como prospecto para siempre).
     if not force:
         cached = buscar_cache(db, user_id=None, email=email_norm)
-        if cached and es_fijo(cached.get("comando_2")):
+        # (una fila demo nunca se copia a otro número: el demo se activa solo con contraseña)
+        if cached and es_fijo(cached.get("comando_2")) and not demo.es_demo(cached):
             # asociamos este user_id al mismo resultado
             if user_id:
                 guardar_clasificacion(

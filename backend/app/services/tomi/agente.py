@@ -23,6 +23,7 @@ from typing import Any, Dict, List, Optional
 from openai import OpenAI
 
 from app.services.tomi import bases_datos as bd
+from app.services.tomi import demo
 from app.services.tomi import notion_client as nc
 from app.services.tomi import informe as inf
 from app.services.tomi.openai_cb import openai_breaker, LLM_FALLBACK_MSG
@@ -289,12 +290,46 @@ AVISO_CLIENTE = (
 )
 
 
+AVISO_ASESOR_DEMO = (
+    "ALCANCE: el usuario es un ASESOR DEMO (ficticio). Las herramientas SOLO devuelven su cartera "
+    "ficticia (clientes y pólizas DEMO). Si pregunta por clientes, asesores o pólizas reales, "
+    "respondé que en el modo demo solo ve su cartera de prueba."
+)
+
+
 def alcance_de(clasificacion: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-    """Alcance de datos según quién escribe. None = sin restricción (asesores y equipo).
-    Un CLIENTE (real o demo) solo puede ver lo suyo: se ata a SU correo, no a lo que pida."""
-    if not clasificacion or str(clasificacion.get("comando_2") or "").lower() != "cliente":
+    """Alcance de datos según quién escribe. None = sin restricción (asesores reales y equipo).
+    Un CLIENTE (real o demo) solo puede ver lo suyo: se ata a SU correo, no a lo que pida.
+    El ASESOR DEMO solo ve su cartera ficticia."""
+    if not clasificacion:
+        return None
+    if demo.es_asesor_demo(clasificacion):
+        return {"rol": "asesor_demo", "email": demo.asesor_email(),
+                "clientes": list(demo.clientes_de_la_cartera())}
+    if str(clasificacion.get("comando_2") or "").lower() != "cliente":
         return None
     return {"rol": "cliente", "email": (clasificacion.get("email") or "").strip().lower() or None}
+
+
+def _consulta_de_asesor_demo(args: Dict[str, Any], alcance: Dict[str, Any], wa_id: Optional[str]) -> Any:
+    """`consultar_bases` para el asesor demo: su cartera (por su correo de asesor) o el detalle
+    de clientes/pólizas DE ESA CARTERA. Todo lo que pida fuera de eso se descarta."""
+    permitidos = set(alcance.get("clientes") or [])
+    emails = [e.strip().lower() for e in list(args.get("emails") or []) + [args.get("email_cliente") or ""]
+              if e and e.strip().lower() in permitidos]
+    polizas = [p for p in (args.get("polizas") or []) if str(p).upper().startswith(demo.PREFIJO_POLIZA)]
+    modo = args.get("modo") or "cartera"
+    if modo == "cartera" or not (emails or polizas):
+        res = bd.consultar(mensaje="", modo="cartera", email_asesor=alcance["email"],
+                           filtro_estado=args.get("filtro_estado"), limite=50)
+    else:
+        incluir = [i for i in (args.get("incluir") or []) if i in _INCLUIR_CLIENTE] or None
+        res = bd.consultar(mensaje="", emails=emails or None, polizas=polizas or None,
+                           incluir=incluir, modo=modo if modo in _MODOS_CLIENTE else "polizas",
+                           solo_activas=bool(args.get("solo_activas") or False), limite=50)
+    if isinstance(res, dict):
+        res["alcance"] = "asesor demo: solo su cartera ficticia"
+    return res
 
 
 def _consulta_de_cliente(args: Dict[str, Any], alcance: Dict[str, Any], wa_id: Optional[str]) -> Any:
@@ -327,10 +362,12 @@ def _dispatch(name: str, args: Dict[str, Any], wa_id: Optional[str] = None,
 
     `alcance` (ver `alcance_de`) lo fija el backend según la clasificación del número: con
     un cliente, las tools solo devuelven sus propios datos, pida lo que pida el LLM."""
-    if alcance and alcance.get("rol") == "cliente":
+    if alcance and alcance.get("rol") in ("cliente", "asesor_demo"):
         if name == "consultar_bases":
+            if alcance["rol"] == "asesor_demo":
+                return _consulta_de_asesor_demo(args, alcance, wa_id)
             return _consulta_de_cliente(args, alcance, wa_id)
-        return {"error": "No disponible: por privacidad solo se consultan los datos del propio cliente."}
+        return {"error": "No disponible: por privacidad solo se consultan los datos propios."}
     if name == "consultar_bases":
         return bd.consultar(
             mensaje=args.get("mensaje", ""),
@@ -412,6 +449,8 @@ def responder(
     messages: List[Dict[str, Any]] = [{"role": "system", "content": SYSTEM_PROMPT}]
     if alcance and alcance.get("rol") == "cliente":
         messages.append({"role": "system", "content": AVISO_CLIENTE})
+    elif alcance and alcance.get("rol") == "asesor_demo":
+        messages.append({"role": "system", "content": AVISO_ASESOR_DEMO})
     if historial:
         # historial esperado: [{role: user|assistant, content: ...}]
         for h in historial[-10:]:  # últimos 10 turnos
