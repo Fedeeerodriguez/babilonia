@@ -298,9 +298,7 @@ def clasificar_usuario(
             res["directrices_bloque"] = aprend.bloque_directrices(db, "todos")
             # 2) Si es un ASESOR, analizamos su mensaje como posible feedback (repregunta con
             #    estado en backend). `responder` = lo que Tommy le dice (pregunta o acuse).
-            #    El asesor DEMO no: sus "correcciones" no pueden volverse reglas de Tommy real.
-            es_demo = bool(res.get("demo")) or demo.es_demo(res)
-            if str(res.get("comando_2", "")).strip().lower() == "asesor" and not es_demo:
+            if str(res.get("comando_2", "")).strip().lower() == "asesor":
                 fb = aprend.procesar_con_sesion(
                     db,
                     user_id=str(body.user_id or res.get("user_id") or ""),
