@@ -31,6 +31,12 @@ from typing import Any, Dict, Optional, Tuple
 
 EMAIL_DEFAULT = "cliente.demo@example.com"
 NOMBRE_DEFAULT = "DEMO María Prueba"
+# Asesor FICTICIO del cliente demo: es solo un registro en Notion para que el cliente demo
+# tenga "su asesor". NO es un usuario: nadie puede entrar como él.
+ASESOR_EMAIL = "asesora.demo@example.com"
+ASESOR_NOMBRE = "DEMO Laura Méndez"
+# Todo lo ficticio en Notion empieza así (pólizas, productos, nombres).
+PREFIJO = "DEMO"
 
 _ENTRAR = re.compile(r"^\s*demo\s+(\S+)\s+(\S+)\s*$", re.IGNORECASE)
 _SALIR = re.compile(r"^\s*salir\s+(?:del?\s+)?(?:modo\s+)?demo\s*[.!]?\s*$", re.IGNORECASE)
@@ -46,6 +52,17 @@ def email() -> str:
 
 def nombre() -> str:
     return (os.getenv("TOMI_DEMO_NOMBRE", "") or NOMBRE_DEFAULT).strip()
+
+
+def correos_demo() -> Tuple[str, ...]:
+    """Correos ficticios: nadie puede identificarse con ellos escribiéndolos a mano (Notion
+    vería al asesor ficticio como un asesor REAL, sin restricción). Solo vale el comando DEMO."""
+    return (email(), ASESOR_EMAIL)
+
+
+def es_registro_demo(nombre_registro: Optional[str]) -> bool:
+    """True si un registro de Notion es ficticio (su nombre empieza con DEMO)."""
+    return str(nombre_registro or "").strip().upper().startswith(PREFIJO)
 
 
 def activo() -> bool:

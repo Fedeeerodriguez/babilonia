@@ -119,3 +119,28 @@ def test_cliente_no_puede_abrir_paginas_de_notion(monkeypatch):
 def test_asesor_sin_restriccion():
     assert ag.alcance_de({"comando_2": "asesor", "email": "a@x.com"}) is None
     assert ag.alcance_de(None) is None
+
+
+# ------------------------------------------------------------------ mundo ficticio del cliente
+def test_correos_ficticios_no_sirven_a_mano(db, notion):
+    # Notion ve a la asesora ficticia como asesor REAL: escribir su correo no debe dar acceso.
+    notion["por_email"] = {demo.ASESOR_EMAIL: "asesor", demo.EMAIL_DEFAULT: "cliente"}
+    assert _c(db, f"soy {demo.ASESOR_EMAIL}")["comando_2"] == "desconocido"
+    assert _c(db, f"mi correo es {demo.EMAIL_DEFAULT}")["comando_2"] == "desconocido"
+
+
+def test_fila_demo_no_se_copia_a_otro_numero(db, notion):
+    _c(db, f"DEMO demo.babilonia {CLAVE}")
+    otro = clf.clasificar(db, user_id="5219999999999", mensaje_usuario=demo.EMAIL_DEFAULT)
+    assert otro["comando_2"] == "desconocido"
+
+
+def test_productos_demo_fuera_del_catalogo(monkeypatch):
+    from app.services.tomi import notion_client as nc
+    filas = [{"_title": "OptiMaxx Plus"}, {"_title": "DEMO Plan de Retiro"}, {"_title": "PLU3"}]
+    monkeypatch.setattr(nc, "_query_simple", lambda db_id, conds, limit: filas)
+    assert [f["_title"] for f in nc.buscar_productos()] == ["OptiMaxx Plus", "PLU3"]
+
+
+def test_no_existe_el_modo_asesor_demo():
+    assert demo.detectar_comando(f"DEMO ASESOR demo.babilonia {CLAVE}") is None

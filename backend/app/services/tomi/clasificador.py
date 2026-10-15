@@ -277,6 +277,11 @@ def _clasificar(
     # Extraemos el email ANTES de mirar el caché, para detectar si el usuario está
     # dando un email NUEVO (distinto al que teníamos cacheado para su número).
     email_norm = (email or "").strip().lower() or extraer_email(mensaje_usuario or "")
+    # Los correos ficticios del demo SOLO se usan con el comando DEMO (con contraseña). Si
+    # alguien escribe a mano el del asesor ficticio, Notion lo vería como asesor REAL y sin
+    # restricción → se ignoran como si no hubiera dado correo.
+    if email_norm and email_norm in demo.correos_demo():
+        email_norm = None
 
     # A) NIVEL FIJO. Si el número ya tiene un nivel real (estudiante/cliente/asesor), ése
     #    es su nivel en TODAS las ejecuciones: un email en el mensaje NO lo re-clasifica
@@ -351,7 +356,8 @@ def _clasificar(
     #    se vuelve a consultar (antes quedaba trabado como prospecto para siempre).
     if not force:
         cached = buscar_cache(db, user_id=None, email=email_norm)
-        if cached and es_fijo(cached.get("comando_2")):
+        # (una fila demo nunca se copia a otro número: el demo se activa solo con contraseña)
+        if cached and es_fijo(cached.get("comando_2")) and not demo.es_demo(cached):
             # asociamos este user_id al mismo resultado
             if user_id:
                 guardar_clasificacion(

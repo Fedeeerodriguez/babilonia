@@ -1419,7 +1419,11 @@ def buscar_productos(*, nombre: Optional[str] = None, tipo_producto: Optional[st
         conds.append({"property": "Tipo de producto", "select": {"equals": tipo_producto}})
     if id_allianz:
         conds.append({"property": "ID Allianz", "rich_text": {"contains": id_allianz}})
-    return _query_simple(DB_PRODUCTOS, conds, limit)
+    # Los productos ficticios del cliente demo ("DEMO …") no son parte del catálogo real:
+    # nunca se le ofrecen a un prospecto ni aparecen en "qué productos venden".
+    filas = _query_simple(DB_PRODUCTOS, conds, limit + 5)
+    return [f for f in filas if not str(f.get("_title") or f.get("Nombre") or "").strip().upper()
+            .startswith("DEMO")][:limit]
 
 
 def buscar_clientes_ppr(*, email_cliente: Optional[str] = None, email_asesor: Optional[str] = None,
