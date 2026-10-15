@@ -211,7 +211,8 @@ def _modo_demo(db: Session, comando: tuple, user_id: str, user_nombre: Optional[
                               data=demo.datos_demo(cached), permitir_bajar=True)
         return {"comando_1": "registrado", "comando_2": "cliente", "email": demo.email(),
                 "user_id": user_id, "user_nombre": demo.nombre(), "fuente": "demo",
-                "demo": True, "nota_sistema": demo.NOTA_BIENVENIDA.format(nombre=demo.nombre())}
+                "demo": True, "nota_sistema": demo.NOTA_BIENVENIDA.format(
+                    nombre=demo.nombre(), lista=demo.lista_peticiones())}
     # salir
     if not demo.es_demo(cached):
         return None
@@ -254,8 +255,12 @@ def clasificar(
                           user_nombre=user_nombre, force=force)
         res["nota_sistema"] = nota
         return res
-    return _clasificar(db, user_id=user_id, mensaje_usuario=mensaje_usuario, email=email,
-                       user_nombre=user_nombre, force=force)
+    res = _clasificar(db, user_id=user_id, mensaje_usuario=mensaje_usuario, email=email,
+                      user_nombre=user_nombre, force=force)
+    # En modo demo, "¿qué puedo pedir?" / "MENU" → Tommy manda la lista fija de peticiones.
+    if demo.es_demo(res) and demo.pide_lista(mensaje_usuario):
+        res["nota_sistema"] = demo.NOTA_LISTA.format(lista=demo.lista_peticiones())
+    return res
 
 
 def _clasificar(

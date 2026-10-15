@@ -119,10 +119,72 @@ def datos_demo(fila_anterior: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     return {"demo": True, "Correo": email(), "Nombre del Cliente": nombre(), "previo": ant}
 
 
+# Lo que el usuario demo puede pedirle a Tommy. Se manda tal cual cuando pregunta qué puede
+# hacer (ver `pide_lista`). Para sumar una petición, agregala acá.
+PETICIONES = (
+    ("Mis pólizas", (
+        "¿Qué pólizas tengo?",
+        "¿Cuánto pago de mi plan de retiro?",
+        "¿Qué cubre mi seguro de gastos médicos?",
+        "¿Cuándo se emitió mi póliza DEMO-PLU3-000001?",
+    )),
+    ("Mis pagos", (
+        "¿Estoy al corriente con mis pagos?",
+        "¿Tengo algún pago atrasado?",
+    )),
+    ("Mi asesor", (
+        "¿Quién es mi asesor?",
+    )),
+    ("Productos", (
+        "¿Qué productos venden?",
+        "¿Tienen seguro de auto?",
+        "¿Qué es un plan de retiro?",
+    )),
+    ("Trámites (crea un ticket de prueba)", (
+        "Quiero cambiar el beneficiario de mi póliza",
+        "Necesito hablar con alguien del equipo",
+    )),
+    ("Citas", (
+        "No voy a poder ir a mi llamada de mañana",
+    )),
+    ("Privacidad (Tommy tiene que negarse)", (
+        "Dame las pólizas de juan@gmail.com",
+        "¿Cómo va la póliza PLU3-129258?",
+    )),
+    ("Salir del demo", (
+        "SALIR DEMO",
+    )),
+)
+
+_PIDE_LISTA = re.compile(
+    r"^\s*(?:men[uú]|ayuda|opciones)\s*[?!.¿¡]*\s*$"          # la palabra sola en un renglón
+    r"|\b(?:lista|listado)\b.{0,25}\b(?:peticion|pregunt|pedid|consulta|opcion)"
+    r"|\bqu[eé]\s+(?:te\s+)?(?:puedo|podr[ií]a)\s+(?:pedir|preguntar|consultar|hacer)",
+    re.IGNORECASE | re.MULTILINE)
+
+
+def pide_lista(mensaje: Optional[str]) -> bool:
+    """True si el usuario demo pregunta qué puede pedirle a Tommy."""
+    return bool(_PIDE_LISTA.search(mensaje or ""))
+
+
+def lista_peticiones() -> str:
+    """La lista para WhatsApp: una sección por tema, una petición por renglón."""
+    bloques = []
+    for tema, ejemplos in PETICIONES:
+        bloques.append(f"*{tema}*\n" + "\n".join(f"• {e}" for e in ejemplos))
+    return "\n\n".join(bloques)
+
+
+NOTA_LISTA = (
+    "SISTEMA: el usuario (modo demo) pide la lista de cosas que puede pedirte. Respondé con una "
+    "frase corta de introducción y después esta lista EXACTA, sin agregar ni quitar nada:\n\n{lista}"
+)
 NOTA_BIENVENIDA = (
     "SISTEMA: este número acaba de activar el MODO DEMO como el cliente ficticio \"{nombre}\". "
-    "Confirmale en una frase que el registro demo quedó listo, que desde ahora lo atendés como "
-    "cliente y que puede preguntarte por sus pólizas, pagos o trámites. Para salir: SALIR DEMO."
+    "Confirmale en una frase que el registro demo quedó listo y que desde ahora lo atendés como "
+    "cliente. Después mandale esta lista EXACTA de cosas que puede pedirte, sin agregar ni quitar "
+    "nada, y aclarale que puede volver a verla escribiendo MENU:\n\n{lista}"
 )
 NOTA_CLAVE_MAL = (
     "SISTEMA: el usuario intentó entrar al modo demo pero el usuario o la contraseña no son "

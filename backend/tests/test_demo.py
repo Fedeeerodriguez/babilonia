@@ -144,3 +144,30 @@ def test_productos_demo_fuera_del_catalogo(monkeypatch):
 
 def test_no_existe_el_modo_asesor_demo():
     assert demo.detectar_comando(f"DEMO ASESOR demo.babilonia {CLAVE}") is None
+
+
+# ------------------------------------------------------------------ lista de peticiones
+def test_bienvenida_trae_la_lista(db, notion):
+    r = _c(db, f"DEMO demo.babilonia {CLAVE}")
+    assert "¿Qué pólizas tengo?" in r["nota_sistema"] and "SALIR DEMO" in r["nota_sistema"]
+
+
+@pytest.mark.parametrize("msg", ["MENU", "menú", "ayuda", "¿qué puedo pedir?",
+                                 "dame la lista de peticiones", "que te puedo preguntar",
+                                 "pasame el listado de preguntas"])
+def test_en_demo_pedir_la_lista(db, notion, msg):
+    _c(db, f"DEMO demo.babilonia {CLAVE}")
+    r = _c(db, msg)
+    assert "lista EXACTA" in r["nota_sistema"] and "¿Quién es mi asesor?" in r["nota_sistema"]
+
+
+@pytest.mark.parametrize("msg", ["¿qué pólizas tengo?", "necesito ayuda con mi póliza", "hola"])
+def test_en_demo_mensajes_normales_no_mandan_la_lista(db, notion, msg):
+    _c(db, f"DEMO demo.babilonia {CLAVE}")
+    assert "nota_sistema" not in _c(db, msg)
+
+
+def test_fuera_del_demo_no_hay_lista(db, notion):
+    notion["por_email"] = {"a@x.com": "asesor"}
+    _c(db, "a@x.com")
+    assert "nota_sistema" not in _c(db, "MENU")
