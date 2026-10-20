@@ -230,3 +230,23 @@ class AvisoCita(Base):
     resultado = Column(Text)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow, index=True)
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class AvisoTomi(Base):
+    """Aviso TEMPORAL que el equipo le carga a Tommy desde la plataforma (ej. "la Liga Babilonia
+    está cerrada por mantenimiento hasta el lunes"). Los vigentes se agregan en cada mensaje a
+    `nota_sistema` del clasificador → el agente de n8n los recibe sin tocar el flujo. Se prenden,
+    apagan, editan o borran cuando haga falta; con `desde`/`hasta` se programan solos.
+    """
+    __tablename__ = "tomi_avisos"
+    id = Column(PK, primary_key=True, autoincrement=True)
+    titulo = Column(String, nullable=False)
+    contenido = Column(Text, nullable=False)
+    audiencia = Column(String, default="todos", index=True)  # todos | asesor | cliente | estudiante | prospecto
+    activo = Column(Boolean, default=True, index=True)
+    desde = Column(DateTime(timezone=True), nullable=True)    # vacío = desde ya
+    hasta = Column(DateTime(timezone=True), nullable=True)    # vacío = hasta que lo apaguen
+    creado_por = Column(String)
+    actualizado_por = Column(String)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)

@@ -311,6 +311,14 @@ def clasificar_usuario(
                         res["responder"] = fb["responder"]
     except Exception as ex:  # noqa: BLE001
         log.warning("aprendizaje en clasificar-usuario falló (se ignora): %s", ex)
+    # ---- Avisos temporales cargados desde la plataforma (ej. "Liga cerrada por mantenimiento") ----
+    # Van en `nota_sistema`, que el agente de n8n ya recibe: sin nodos nuevos. Fail-safe.
+    try:
+        if isinstance(res, dict) and not res.get("pausado"):
+            from app.services.tomi import avisos as avisos_tomi
+            avisos_tomi.agregar_a_nota(res, avisos_tomi.bloque(db, res.get("comando_2")))
+    except Exception as ex:  # noqa: BLE001
+        log.warning("avisos en clasificar-usuario fallaron (se ignoran): %s", ex)
     return res
 
 

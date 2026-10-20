@@ -11,6 +11,7 @@ import Sandbox from './pages/Sandbox'
 import Team from './pages/Team'
 import Higiene from './pages/Higiene'
 import TicketsAllianz from './pages/TicketsAllianz'
+import AvisosTomi from './pages/AvisosTomi'
 import Layout from './components/Layout/Layout'
 import ProtectedRoute from './components/Layout/ProtectedRoute'
 
@@ -33,6 +34,7 @@ export default function App() {
       <Route path="/higiene" element={<P requireAdmin><Higiene /></P>} />
       <Route path="/tickets-allianz" element={<P requireAdmin><TicketsAllianz /></P>} />
       <Route path="/team" element={<P requireAdmin><Team /></P>} />
+      <Route path="/avisos-tomi" element={<P requireAdmin><AvisosTomi /></P>} />
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
