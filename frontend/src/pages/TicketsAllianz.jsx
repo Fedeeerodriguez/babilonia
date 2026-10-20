@@ -4,7 +4,7 @@ import {
   ThumbsUp, ThumbsDown, Meh, Target, Send,
 } from 'lucide-react'
 import tapi, { ticketsAllianzConfigurada } from '../utils/ticketsAllianzApi'
-import { AsignarIdentificacion, LineaTiempo, ResumenEtapa } from '../components/TicketEtapaAllianz'
+import { AsignarIdentificacion, GuiaAportacion, LineaTiempo, MarcarEnviado, ResumenEtapa } from '../components/TicketEtapaAllianz'
 
 // NOTA: el gestor de tickets Allianz vive FUERA de Tomi (proyecto aparte). Esta sección solo
 // consume su API externa (VITE_TICKETS_ALLIANZ_API). No se envía nada al cliente desde acá.
@@ -181,6 +181,9 @@ export default function TicketsAllianz() {
               {/* Etapa del proceso (Etapa 1): etapa, próximo recordatorio, por qué necesita a Ceci */}
               <ResumenEtapa t={t} />
               <AsignarIdentificacion t={t} onListo={() => { setMsg({ ok: true, text: 'Cliente y asesor asignados ✓' }); load() }} />
+              <GuiaAportacion key={`guia-${t.id}-${t.guia_pendiente?.version}`} t={t}
+                onListo={(m) => { setMsg({ ok: true, text: `${m || 'Listo'} ✓` }); load() }} />
+              <MarcarEnviado t={t} onListo={() => { setMsg({ ok: true, text: 'Marcado como enviado ✓' }); load() }} />
               {t.etapa && <LineaTiempo ticketId={t.id} />}
 
               {/* 1. Qué decía el correo */}

@@ -1,10 +1,12 @@
 import { useState } from 'react'
-import { Bell, ChevronDown, ChevronRight, UserCheck, AlertTriangle } from 'lucide-react'
+import { Bell, ChevronDown, ChevronRight, UserCheck, AlertTriangle, FileCheck2, Send } from 'lucide-react'
 import tapi from '../utils/ticketsAllianzApi'
 
 // Etapa 1 del gestor Allianz (proceso largo): en qué etapa está el ticket, cuándo es el próximo
 // recordatorio, por qué necesita a Ceci, la línea de tiempo C1→C5 y la asignación manual de
 // cliente/asesor cuando el sistema no pudo identificarlos sin adivinar.
+// Etapa 2 (proceso corto + trámites): la guía de aportación que Ceci aprueba antes de que salga y
+// el botón para marcar a mano el pago (Patrimonial) o una respuesta mandada por fuera.
 
 export const MOTIVO_CECI = {
   sin_identificar: 'Cliente/asesor sin identificar',
@@ -13,7 +15,11 @@ export const MOTIVO_CECI = {
   escalacion_bloqueada: 'Escalación bloqueada',
   revisar: 'Revisar a mano',
   rebote: 'Respuesta rebotada',
+  guia_por_aprobar: 'Guía de aportación por aprobar',
 }
+
+const PROCESO = { largo: 'Proceso largo', corto: 'Proceso corto', tramite: 'Trámite' }
+const RECORDATORIO = { requerimiento: 'del pedido de Allianz', esperando_allianz: 'esperando a Allianz', pago: 'del pago' }
 
 const PARA = { ceci: 'Ceci', asesor: 'Asesor', cliente: 'Cliente', allianz: 'Allianz' }
 
@@ -34,6 +40,8 @@ export function ResumenEtapa({ t }) {
           {t.etapa_nombre || t.etapa}
         </span>
       )}
+      {t.proceso && t.proceso !== 'largo' && <span className="text-muted">{PROCESO[t.proceso] || t.proceso}</span>}
+      {t.titulo_hilo && <span className="text-deep font-medium">«{t.titulo_hilo}»</span>}
       {t.producto && <span className="text-muted">{t.producto}{t.nro_solicitud ? ` · sol. ${t.nro_solicitud}` : ''}</span>}
       {p && (
         <span className="text-muted flex items-center gap-1">
@@ -94,7 +102,7 @@ export function LineaTiempo({ ticketId }) {
             <div className="mt-3 pt-2 border-t border-border/50 text-muted">
               {data.recordatorios.map((r, i) => (
                 <div key={i}>
-                  Recordatorio {r.motivo === 'requerimiento' ? 'del pedido de Allianz' : 'esperando a Allianz'}: {r.estado}
+                  Recordatorio {RECORDATORIO[r.motivo] || r.motivo}: {r.estado}
                   {r.estado === 'activo' ? ` · vence ${fecha(r.vence)}` : ''}
                 </div>
               ))}
@@ -158,6 +166,90 @@ export function AsignarIdentificacion({ t, onListo }) {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+
+// ─────────────── Etapa 2 ───────────────
+export function GuiaAportacion({ t, onListo }) {
+  const g = t.guia_pendiente
+  const [texto, setTexto] = useState(g?.texto || '')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+  if (!g) return null
+  const falta = texto.includes('[completar')
+  const cambiado = texto.trim() !== (g.texto || '').trim()
+
+  const mandar = async (accion, extra = {}) => {
+    if (accion === 'descartar' && !window.confirm('¿Descartar la guía? No se le manda nada al cliente.')) return
+    setBusy(true); setError(null)
+    try {
+      const r = await tapi.post(`/api/tickets-allianz/aprobacion/${g.id}`, { accion, usuario: 'Ceci', ...extra })
+      onListo?.(r.data?.motivo)
+    } catch (err) {
+      setError(err.response?.data?.detail || 'No se pudo guardar.')
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="px-5 pt-3">
+      <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-3 space-y-2">
+        <div className="text-[12px] font-semibold text-deep flex items-center gap-1">
+          <FileCheck2 size={13} /> Guía de aportación — versión {g.version}
+          {g.por_telegram && <span className="font-normal text-muted"> · también está en tu Telegram</span>}
+        </div>
+        <p className="text-[12px] text-muted">
+          No sale al cliente ni al asesor hasta que la apruebes. Sale exactamente este texto.
+        </p>
+        <textarea id={`guia-${g.id}`} value={texto} rows={7} onChange={e => setTexto(e.target.value)}
+          className="w-full text-[13px] border border-border rounded-lg px-2 py-1.5 bg-white/90" />
+        {falta && <div className="text-[12px] text-amber-700">Completa lo que dice [completar] antes de aprobar.</div>}
+        {error && <div className="text-[12px] text-rose-600">{error}</div>}
+        <div className="flex gap-2 flex-wrap">
+          <button disabled={busy || falta} onClick={() => mandar('aprobar', cambiado ? { texto } : {})}
+            className="btn-primary text-[12px] px-3 py-1.5">Aprobar y enviar</button>
+          <button disabled={busy || !cambiado} onClick={() => mandar('corregir', { texto })}
+            className="text-[12px] px-3 py-1.5 border border-border rounded-lg bg-white/80">Guardar sin enviar</button>
+          <button disabled={busy} onClick={() => mandar('descartar')}
+            className="text-[12px] px-3 py-1.5 text-rose-600">Descartar</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export function MarcarEnviado({ t, onListo }) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+  const corto = t.proceso === 'corto'
+  // Corto: después de la guía, el pago (Patrimonial va por un correo nuevo y no vuelve al hilo).
+  // Cualquier proceso: una respuesta a un pedido de Allianz que se mandó por fuera del hilo.
+  const visible = !t.guia_pendiente && (t.estado || '') !== 'resuelto' &&
+    ((corto && ['confirmacion_datos', 'requerimiento'].includes(t.etapa)) || t.etapa === 'requerimiento')
+  if (!visible) return null
+  const etiqueta = corto ? 'Marcar pago enviado' : 'Marcar respuesta enviada'
+
+  const marcar = async () => {
+    const q = corto
+      ? '¿Ya se le mandó a Allianz el comprobante de pago? Se avisa al cliente y al asesor.'
+      : '¿Ya se le mandó a Allianz lo que pidió? Se avisa al cliente y al asesor.'
+    if (!window.confirm(q)) return
+    setBusy(true); setError(null)
+    try {
+      await tapi.post(`/api/tickets-allianz/${t.id}/etapa`, { etapa: 'documentos_enviados', usuario: 'Ceci' })
+      onListo?.()
+    } catch (err) {
+      setError(err.response?.data?.detail || 'No se pudo marcar.')
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="px-5 pt-3 flex items-center gap-2">
+      <button disabled={busy} onClick={marcar} className="text-[12px] text-cobalt-700 flex items-center gap-1">
+        <Send size={13} /> {etiqueta}
+      </button>
+      {error && <span className="text-[12px] text-rose-600">{error}</span>}
     </div>
   )
 }
