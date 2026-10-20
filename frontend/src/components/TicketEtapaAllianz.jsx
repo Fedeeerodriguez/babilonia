@@ -174,12 +174,16 @@ export function AsignarIdentificacion({ t, onListo }) {
 // ─────────────── Etapa 2 ───────────────
 export function GuiaAportacion({ t, onListo }) {
   const g = t.guia_pendiente
-  const [texto, setTexto] = useState(g?.texto || '')
+  const [f, setF] = useState({ monto: g?.monto || '', datos_deposito: g?.datos_deposito || '' })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   if (!g) return null
-  const falta = texto.includes('[completar')
-  const cambiado = texto.trim() !== (g.texto || '').trim()
+  const completa = f.monto.trim() && f.datos_deposito.trim()
+  const cambiado = f.monto.trim() !== (g.monto || '') || f.datos_deposito.trim() !== (g.datos_deposito || '')
+  // La guía sale por la plantilla de WhatsApp: solo se completan estos dos datos; el resto lo pone el sistema.
+  const vista = (g.texto || '')
+    .replace(/• Monto: .*/, `• Monto: ${f.monto.trim() || '[completar]'}`)
+    .replace(/• Datos para depositar: .*/, `• Datos para depositar: ${f.datos_deposito.trim() || '[completar]'}`)
 
   const mandar = async (accion, extra = {}) => {
     if (accion === 'descartar' && !window.confirm('¿Descartar la guía? No se le manda nada al cliente.')) return
@@ -192,6 +196,15 @@ export function GuiaAportacion({ t, onListo }) {
     } finally { setBusy(false) }
   }
 
+  const campo = (k, label, ph) => (
+    <label className="block">
+      <span className="text-[11px] text-muted">{label}</span>
+      <input id={`guia-${g.id}-${k}`} value={f[k]} placeholder={ph}
+        onChange={e => setF(s => ({ ...s, [k]: e.target.value }))}
+        className="w-full text-[13px] border border-border rounded-lg px-2 py-1.5 bg-white/90" />
+    </label>
+  )
+
   return (
     <div className="px-5 pt-3">
       <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-3 space-y-2">
@@ -200,16 +213,19 @@ export function GuiaAportacion({ t, onListo }) {
           {g.por_telegram && <span className="font-normal text-muted"> · también está en tu Telegram</span>}
         </div>
         <p className="text-[12px] text-muted">
-          No sale al cliente ni al asesor hasta que la apruebes. Sale exactamente este texto.
+          No sale al cliente ni al asesor hasta que la apruebes. Completa el monto y los datos para depositar.
         </p>
-        <textarea id={`guia-${g.id}`} value={texto} rows={7} onChange={e => setTexto(e.target.value)}
-          className="w-full text-[13px] border border-border rounded-lg px-2 py-1.5 bg-white/90" />
-        {falta && <div className="text-[12px] text-amber-700">Completa lo que dice [completar] antes de aprobar.</div>}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {campo('monto', 'Monto', '$50,000 MXN')}
+          {campo('datos_deposito', 'Datos para depositar', 'CLABE 0123… a nombre de Allianz México')}
+        </div>
+        <div className="text-[11px] text-muted">Así le llega al cliente:</div>
+        <pre className="text-[12px] whitespace-pre-wrap bg-white/80 rounded-lg p-2 text-deep font-sans">{vista}</pre>
         {error && <div className="text-[12px] text-rose-600">{error}</div>}
         <div className="flex gap-2 flex-wrap">
-          <button disabled={busy || falta} onClick={() => mandar('aprobar', cambiado ? { texto } : {})}
+          <button disabled={busy || !completa} onClick={() => mandar('aprobar', f)}
             className="btn-primary text-[12px] px-3 py-1.5">Aprobar y enviar</button>
-          <button disabled={busy || !cambiado} onClick={() => mandar('corregir', { texto })}
+          <button disabled={busy || !cambiado} onClick={() => mandar('corregir', f)}
             className="text-[12px] px-3 py-1.5 border border-border rounded-lg bg-white/80">Guardar sin enviar</button>
           <button disabled={busy} onClick={() => mandar('descartar')}
             className="text-[12px] px-3 py-1.5 text-rose-600">Descartar</button>
