@@ -4,6 +4,7 @@ import {
   ThumbsUp, ThumbsDown, Meh, Target, Send,
 } from 'lucide-react'
 import tapi, { ticketsAllianzConfigurada } from '../utils/ticketsAllianzApi'
+import { AsignarIdentificacion, LineaTiempo, ResumenEtapa } from '../components/TicketEtapaAllianz'
 
 // NOTA: el gestor de tickets Allianz vive FUERA de Tomi (proyecto aparte). Esta sección solo
 // consume su API externa (VITE_TICKETS_ALLIANZ_API). No se envía nada al cliente desde acá.
@@ -21,6 +22,8 @@ const ETIQUETA = {
   avisar_asesor: 'Avisar al asesor', escalar_ceci: 'Escalar a Ceci',
   recordatorio_sla: 'Recordatorio SLA', recordatorio: 'Recordatorio',
   consulta_general: 'Consulta a Ceci', reactivacion: 'Reactivar ticket',
+  avisar_ceci: 'Avisar a Ceci', escalar_allianz: 'Escalar a Allianz (con copia a la ejecutiva)',
+  visto_bueno_ceci: 'Pedir visto bueno a Ceci',
 }
 
 // Buena / Regular / Mala — definición de cada botón
@@ -42,15 +45,17 @@ export default function TicketsAllianz() {
   const [msg, setMsg] = useState(null)
   const [busy, setBusy] = useState(null)        // accion id en proceso
   const [edit, setEdit] = useState({})          // { [accionId]: textoBorrador }
+  const [filtro, setFiltro] = useState('')      // '' = todos · 'para_ceci' = lo que necesita a Ceci
 
-  const load = () => {
+  const load = (f = filtro) => {
     setLoading(true)
-    tapi.get('/api/tickets-allianz')
+    tapi.get('/api/tickets-allianz', { params: f ? { filtro: f } : {} })
       .then(r => setData(r.data))
       .catch(() => setMsg({ ok: false, text: 'No se pudo cargar el gestor de tickets Allianz.' }))
       .finally(() => setLoading(false))
   }
   useEffect(() => { if (ticketsAllianzConfigurada) load(); else setLoading(false) }, [])
+  const cambiarFiltro = (f) => { setFiltro(f); load(f) }
 
   const patchAccion = (accionId, cambios) =>
     setData(d => ({
@@ -128,10 +133,19 @@ export default function TicketsAllianz() {
             <div className="text-[11px] uppercase tracking-wider text-muted">Sin calificar</div>
             <div className="text-3xl font-semibold text-amber-600">{r?.pendientes ?? '—'}</div>
           </div>
-          <button onClick={load} className="text-cobalt-700 text-sm flex items-center gap-1.5">
+          <button onClick={() => load()} className="text-cobalt-700 text-sm flex items-center gap-1.5">
             <RefreshCw size={14} /> Recargar
           </button>
         </div>
+      </div>
+
+      <div className="flex gap-2 mb-5">
+        {[['', 'Todos'], ['para_ceci', 'Para Ceci']].map(([f, label]) => (
+          <button key={f || 'todos'} onClick={() => cambiarFiltro(f)}
+            className={`text-[13px] px-3 py-1.5 rounded-lg border ${filtro === f ? 'bg-deep text-white border-deep' : 'border-border text-muted'}`}>
+            {label}{f === 'para_ceci' && r?.para_ceci ? ` (${r.para_ceci})` : ''}
+          </button>
+        ))}
       </div>
 
       {msg && (
@@ -163,6 +177,11 @@ export default function TicketsAllianz() {
                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${estadoClass(t.estado)}`}>{t.estado}</span>
                 </div>
               </div>
+
+              {/* Etapa del proceso (Etapa 1): etapa, próximo recordatorio, por qué necesita a Ceci */}
+              <ResumenEtapa t={t} />
+              <AsignarIdentificacion t={t} onListo={() => { setMsg({ ok: true, text: 'Cliente y asesor asignados ✓' }); load() }} />
+              {t.etapa && <LineaTiempo ticketId={t.id} />}
 
               {/* 1. Qué decía el correo */}
               {t.correo && (
