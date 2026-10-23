@@ -4,7 +4,9 @@ import {
   ThumbsUp, ThumbsDown, Meh, Target, Send,
 } from 'lucide-react'
 import tapi, { ticketsAllianzConfigurada } from '../utils/ticketsAllianzApi'
-import { AsignarIdentificacion, GuiaAportacion, LineaTiempo, MarcarEnviado, ResumenEtapa } from '../components/TicketEtapaAllianz'
+import {
+  AbrirTramite, AprobarCorreo, AsignarIdentificacion, GuiaAportacion, LineaTiempo, MarcarEnviado, ResumenEtapa,
+} from '../components/TicketEtapaAllianz'
 
 // NOTA: el gestor de tickets Allianz vive FUERA de Tomi (proyecto aparte). Esta sección solo
 // consume su API externa (VITE_TICKETS_ALLIANZ_API). No se envía nada al cliente desde acá.
@@ -23,7 +25,7 @@ const ETIQUETA = {
   recordatorio_sla: 'Recordatorio SLA', recordatorio: 'Recordatorio',
   consulta_general: 'Consulta a Ceci', reactivacion: 'Reactivar ticket',
   avisar_ceci: 'Avisar a Ceci', escalar_allianz: 'Escalar a Allianz (con copia a la ejecutiva)',
-  visto_bueno_ceci: 'Pedir visto bueno a Ceci',
+  visto_bueno_ceci: 'Pedir visto bueno a Ceci', abrir_tramite: 'Abrir trámite con Allianz',
 }
 
 // Buena / Regular / Mala — definición de cada botón
@@ -139,6 +141,8 @@ export default function TicketsAllianz() {
         </div>
       </div>
 
+      <AbrirTramite onListo={(m) => { setMsg({ ok: true, text: `${m} ✓` }); load() }} />
+
       <div className="flex gap-2 mb-5">
         {[['', 'Todos'], ['para_ceci', 'Para Ceci']].map(([f, label]) => (
           <button key={f || 'todos'} onClick={() => cambiarFiltro(f)}
@@ -166,7 +170,7 @@ export default function TicketsAllianz() {
               <div className="flex items-center justify-between px-5 py-3 bg-bone-100/60 border-b border-border/60">
                 <div className="min-w-0">
                   <div className="font-semibold text-deep truncate">
-                    Ticket {t.nro_ticket || 's/n'}
+                    Ticket {t.nro_ticket || (t.abierto_por === 'babilonia' ? 'pendiente (esperando que Allianz lo confirme)' : 's/n')}
                     {t.cliente_nombre ? <span className="text-muted font-normal"> · {t.cliente_nombre}</span> : null}
                     {t.delicado && <span className="ml-2 px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 text-[10px] font-semibold">delicado</span>}
                   </div>
@@ -269,6 +273,7 @@ export default function TicketsAllianz() {
                             </button>
                           )}
                         </div>
+                        <AprobarCorreo a={a} onListo={(m) => { setMsg({ ok: true, text: `${m || 'Listo'} ✓` }); load() }} />
                       </>
                     )}
                   </div>

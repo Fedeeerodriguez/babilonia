@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Bell, ChevronDown, ChevronRight, UserCheck, AlertTriangle, FileCheck2, Send } from 'lucide-react'
+import { Bell, ChevronDown, ChevronRight, UserCheck, AlertTriangle, FileCheck2, Send, FilePlus2, Paperclip, Eye } from 'lucide-react'
 import tapi from '../utils/ticketsAllianzApi'
 
 // Etapa 1 del gestor Allianz (proceso largo): en qué etapa está el ticket, cuándo es el próximo
@@ -7,6 +7,7 @@ import tapi from '../utils/ticketsAllianzApi'
 // cliente/asesor cuando el sistema no pudo identificarlos sin adivinar.
 // Etapa 2 (proceso corto + trámites): la guía de aportación que Ceci aprueba antes de que salga y
 // el botón para marcar a mano el pago (Patrimonial) o una respuesta mandada por fuera.
+// Etapa 3: abrir un trámite desde el panel y aprobar los correos retenidos para Ceci.
 
 export const MOTIVO_CECI = {
   sin_identificar: 'Cliente/asesor sin identificar',
@@ -266,6 +267,160 @@ export function MarcarEnviado({ t, onListo }) {
         <Send size={13} /> {etiqueta}
       </button>
       {error && <span className="text-[12px] text-rose-600">{error}</span>}
+    </div>
+  )
+}
+
+// Etapa 3: correos retenidos para el visto bueno de Ceci (escalación a Allianz con copia a la
+// ejecutiva, temas críticos). Sale el borrador tal como está (con lo que se haya editado).
+export function AprobarCorreo({ a, onListo }) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+  if (a.estado !== 'pendiente_ceci') return null
+
+  const decidir = async (decision) => {
+    const q = decision === 'enviar'
+      ? '¿Enviar este correo a Allianz tal como está? Sale en el próximo ciclo.'
+      : '¿Descartar este correo? No se manda.'
+    if (!window.confirm(q)) return
+    setBusy(true); setError(null)
+    try {
+      const r = await tapi.post(`/api/tickets-allianz/accion/${a.id}/aprobar`, { decision, usuario: 'Ceci' })
+      onListo?.(r.data?.motivo)
+    } catch (err) {
+      setError(err.response?.data?.detail || 'No se pudo guardar.')
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50/60 p-2.5 flex items-center gap-2 flex-wrap">
+      <span className="text-[12px] text-deep flex items-center gap-1">
+        <AlertTriangle size={13} className="text-amber-600" /> Espera tu aprobación: no sale hasta que lo envíes.
+      </span>
+      <button disabled={busy} onClick={() => decidir('enviar')} className="btn-primary text-[12px] px-3 py-1.5 ml-auto">Enviar</button>
+      <button disabled={busy} onClick={() => decidir('descartar')} className="text-[12px] px-3 py-1.5 text-rose-600">Descartar</button>
+      {error && <span className="text-[12px] text-rose-600 w-full">{error}</span>}
+    </div>
+  )
+}
+
+// Etapa 3: abrir un trámite ante Allianz desde el panel. El sistema identifica la póliza en
+// Notion, arma el correo (asunto fijo para reconocer la respuesta) y lo manda desde hola@.
+const leerArchivo = (file) => new Promise((ok, mal) => {
+  const r = new FileReader()
+  r.onload = () => ok({ nombre: file.name, tipo: file.type, base64: String(r.result).split(',')[1] || '' })
+  r.onerror = () => mal(new Error(`No se pudo leer ${file.name}`))
+  r.readAsDataURL(file)
+})
+
+const VACIO = { tramite: '', otro: '', poliza: '', nota: '' }
+
+export function AbrirTramite({ onListo }) {
+  const [abierto, setAbierto] = useState(false)
+  const [catalogo, setCatalogo] = useState([])
+  const [f, setF] = useState(VACIO)
+  const [archivos, setArchivos] = useState([])
+  const [vista, setVista] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+
+  const abrirForm = async () => {
+    setAbierto(a => !a)
+    if (!catalogo.length) {
+      try { setCatalogo((await tapi.get('/api/tickets-allianz/tramites/catalogo')).data.tramites || []) }
+      catch { setError('No se pudo cargar la lista de trámites.') }
+    }
+  }
+  const cambiar = (k, v) => { setF(s => ({ ...s, [k]: v })); setVista(null) }
+  const cuerpo = async () => ({
+    tramite: f.tramite === 'otro' ? f.otro.trim() : f.tramite,
+    poliza: f.poliza.trim(), nota: f.nota.trim() || null, usuario: 'Ceci',
+    adjuntos: await Promise.all(archivos.map(leerArchivo)),
+  })
+
+  const verVista = async () => {
+    setBusy(true); setError(null); setVista(null)
+    try {
+      const r = (await tapi.post('/api/tickets-allianz/tramites/vista-previa', await cuerpo())).data
+      if (r.ok) setVista(r); else setError(r.motivo)
+    } catch (err) {
+      setError(err.response?.data?.detail || err.message || 'No se pudo armar la vista previa.')
+    } finally { setBusy(false) }
+  }
+
+  const abrir = async () => {
+    setBusy(true); setError(null)
+    try {
+      const r = (await tapi.post('/api/tickets-allianz/tramites', await cuerpo())).data
+      setF(VACIO); setArchivos([]); setVista(null); setAbierto(false)
+      onListo?.(r.sin_destino ? 'Trámite abierto, pero falta el correo de Allianz (ALLIANZ_DEST): queda bloqueado'
+                              : 'Trámite abierto: el correo sale en el próximo ciclo')
+    } catch (err) {
+      setError(err.response?.data?.detail || 'No se pudo abrir el trámite.')
+    } finally { setBusy(false) }
+  }
+
+  const listo = f.tramite && (f.tramite !== 'otro' || f.otro.trim()) && f.poliza.trim()
+  const entrada = 'w-full text-[13px] border border-border rounded-lg px-2 py-1.5 bg-white/90'
+  return (
+    <div className="card shadow-soft mb-5">
+      <button onClick={abrirForm} className="w-full px-5 py-3 flex items-center gap-2 text-sm font-semibold text-deep">
+        {abierto ? <ChevronDown size={15} /> : <ChevronRight size={15} />} <FilePlus2 size={15} /> Abrir un trámite con Allianz
+      </button>
+      {abierto && (
+        <div className="px-5 pb-4 space-y-3">
+          <p className="text-[12px] text-muted">
+            El correo sale desde hola@, así la respuesta de Allianz llega al sistema y se le da seguimiento solo.
+            Al cliente y al asesor se les avisa cuando Allianz confirma el ticket.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <label className="block">
+              <span className="text-[11px] text-muted">Trámite</span>
+              <select id="tramite-tipo" value={f.tramite} onChange={e => cambiar('tramite', e.target.value)} className={entrada}>
+                <option value="">Elige…</option>
+                {catalogo.map(t => (
+                  <option key={t.clave} value={t.clave}>{t.nombre}{t.nosotros ? '' : ' (el cliente lo puede hacer en su portal)'}</option>
+                ))}
+                <option value="otro">Otro…</option>
+              </select>
+            </label>
+            <label className="block">
+              <span className="text-[11px] text-muted">Póliza</span>
+              <input id="tramite-poliza" value={f.poliza} placeholder="PLU3-408444"
+                onChange={e => cambiar('poliza', e.target.value)} className={entrada} />
+            </label>
+          </div>
+          {f.tramite === 'otro' && (
+            <input id="tramite-otro" value={f.otro} placeholder="Nombre del trámite (ej. Aplicación de pago)"
+              onChange={e => cambiar('otro', e.target.value)} className={entrada} />
+          )}
+          <textarea id="tramite-nota" value={f.nota} placeholder="Detalle para Allianz (opcional)"
+            onChange={e => cambiar('nota', e.target.value)} className={`${entrada} min-h-[70px]`} />
+          <label className="text-[12px] text-cobalt-700 flex items-center gap-1 cursor-pointer w-fit">
+            <Paperclip size={13} /> Adjuntar archivos
+            <input id="tramite-adjuntos" type="file" multiple className="hidden"
+              onChange={e => { setArchivos(Array.from(e.target.files || [])); setVista(null) }} />
+          </label>
+          {archivos.length > 0 && <div className="text-[12px] text-muted">{archivos.map(a => a.name).join(' · ')}</div>}
+
+          {vista && (
+            <div className="rounded-lg border border-border/60 bg-white/70 p-3 space-y-1.5 text-[12px]">
+              <div><b>Cliente:</b> {vista.cliente || '—'} · <b>Asesor:</b> {vista.asesor || '—'}</div>
+              <div><b>Para:</b> {vista.destino || <span className="text-rose-600">falta el correo de Allianz (ALLIANZ_DEST)</span>}</div>
+              <div><b>Asunto:</b> {vista.asunto}</div>
+              <pre className="whitespace-pre-wrap font-sans text-deep bg-bone-100/50 rounded p-2">{vista.cuerpo}</pre>
+            </div>
+          )}
+          {error && <div className="text-[12px] text-rose-600">{error}</div>}
+          <div className="flex gap-2">
+            <button disabled={busy || !listo} onClick={verVista}
+              className="text-[12px] px-3 py-1.5 border border-border rounded-lg bg-white/80 flex items-center gap-1">
+              <Eye size={13} /> Ver cómo sale
+            </button>
+            <button disabled={busy || !vista} onClick={abrir} className="btn-primary text-[12px] px-3 py-1.5">Abrir trámite</button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
