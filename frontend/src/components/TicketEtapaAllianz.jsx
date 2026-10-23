@@ -173,18 +173,36 @@ export function AsignarIdentificacion({ t, onListo }) {
 
 
 // ─────────────── Etapa 2 ───────────────
+// Lo que Ceci completa o confirma en la guía depende del producto (lo manda la API en `campos`):
+// Patrimonial y Elite → el n° de solicitud (ya viene del correo de Allianz); OptiMaxx Plus → monto y datos.
+const CAMPO_GUIA = {
+  monto: ['Monto', '$50,000 MXN'],
+  datos_deposito: ['Datos para depositar', 'CLABE 0123… a nombre de Allianz México'],
+  solicitud: ['Número de solicitud', '25290001'],
+}
+
 export function GuiaAportacion({ t, onListo }) {
   const g = t.guia_pendiente
-  const [f, setF] = useState({ monto: g?.monto || '', datos_deposito: g?.datos_deposito || '' })
+  const campos = g?.campos || [
+    { clave: 'monto', valor: g?.monto || '' }, { clave: 'datos_deposito', valor: g?.datos_deposito || '' },
+  ]
+  const [f, setF] = useState(Object.fromEntries(campos.map(c => [c.clave, c.valor || ''])))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   if (!g) return null
-  const completa = f.monto.trim() && f.datos_deposito.trim()
-  const cambiado = f.monto.trim() !== (g.monto || '') || f.datos_deposito.trim() !== (g.datos_deposito || '')
-  // La guía sale por la plantilla de WhatsApp: solo se completan estos dos datos; el resto lo pone el sistema.
-  const vista = (g.texto || '')
-    .replace(/• Monto: .*/, `• Monto: ${f.monto.trim() || '[completar]'}`)
-    .replace(/• Datos para depositar: .*/, `• Datos para depositar: ${f.datos_deposito.trim() || '[completar]'}`)
+  const val = (k) => (f[k] || '').trim()
+  const completa = campos.every(c => val(c.clave))
+  const cambiado = campos.some(c => val(c.clave) !== (c.valor || ''))
+  const confirma = campos.some(c => c.clave === 'solicitud')
+  // La guía sale por la plantilla de WhatsApp: solo cambian estos datos; el resto lo pone el sistema.
+  let vista = g.texto || ''
+  for (const c of campos) {
+    const nuevo = val(c.clave) || '[completar]'
+    if (c.clave === 'monto') vista = vista.replace(/• Monto: .*/, `• Monto: ${nuevo}`)
+    else if (c.clave === 'datos_deposito') vista = vista.replace(/• Datos para depositar: .*/, `• Datos para depositar: ${nuevo}`)
+    else if (c.valor) vista = vista.split(c.valor).join(nuevo)
+    else vista = vista.replace('[completar]', nuevo)
+  }
 
   const mandar = async (accion, extra = {}) => {
     if (accion === 'descartar' && !window.confirm('¿Descartar la guía? No se le manda nada al cliente.')) return
@@ -196,15 +214,7 @@ export function GuiaAportacion({ t, onListo }) {
       setError(err.response?.data?.detail || 'No se pudo guardar.')
     } finally { setBusy(false) }
   }
-
-  const campo = (k, label, ph) => (
-    <label className="block">
-      <span className="text-[11px] text-muted">{label}</span>
-      <input id={`guia-${g.id}-${k}`} value={f[k]} placeholder={ph}
-        onChange={e => setF(s => ({ ...s, [k]: e.target.value }))}
-        className="w-full text-[13px] border border-border rounded-lg px-2 py-1.5 bg-white/90" />
-    </label>
-  )
+  const valores = () => Object.fromEntries(campos.map(c => [c.clave, val(c.clave)]))
 
   return (
     <div className="px-5 pt-3">
@@ -214,19 +224,27 @@ export function GuiaAportacion({ t, onListo }) {
           {g.por_telegram && <span className="font-normal text-muted"> · también está en tu Telegram</span>}
         </div>
         <p className="text-[12px] text-muted">
-          No sale al cliente ni al asesor hasta que la apruebes. Completa el monto y los datos para depositar.
+          No sale al cliente ni al asesor hasta que la apruebes.{' '}
+          {confirma ? 'Revisa que el número de solicitud sea el correcto: es la referencia del pago.'
+                    : 'Completa el monto y los datos para depositar.'}
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {campo('monto', 'Monto', '$50,000 MXN')}
-          {campo('datos_deposito', 'Datos para depositar', 'CLABE 0123… a nombre de Allianz México')}
+          {campos.map(({ clave }) => (
+            <label key={clave} className="block">
+              <span className="text-[11px] text-muted">{(CAMPO_GUIA[clave] || [clave])[0]}</span>
+              <input id={`guia-${g.id}-${clave}`} value={f[clave] || ''} placeholder={(CAMPO_GUIA[clave] || [])[1]}
+                onChange={e => setF(s => ({ ...s, [clave]: e.target.value }))}
+                className="w-full text-[13px] border border-border rounded-lg px-2 py-1.5 bg-white/90" />
+            </label>
+          ))}
         </div>
         <div className="text-[11px] text-muted">Así le llega al cliente:</div>
         <pre className="text-[12px] whitespace-pre-wrap bg-white/80 rounded-lg p-2 text-deep font-sans">{vista}</pre>
         {error && <div className="text-[12px] text-rose-600">{error}</div>}
         <div className="flex gap-2 flex-wrap">
-          <button disabled={busy || !completa} onClick={() => mandar('aprobar', f)}
+          <button disabled={busy || !completa} onClick={() => mandar('aprobar', valores())}
             className="btn-primary text-[12px] px-3 py-1.5">Aprobar y enviar</button>
-          <button disabled={busy || !cambiado} onClick={() => mandar('corregir', f)}
+          <button disabled={busy || !cambiado} onClick={() => mandar('corregir', valores())}
             className="text-[12px] px-3 py-1.5 border border-border rounded-lg bg-white/80">Guardar sin enviar</button>
           <button disabled={busy} onClick={() => mandar('descartar')}
             className="text-[12px] px-3 py-1.5 text-rose-600">Descartar</button>
