@@ -174,7 +174,7 @@ export function AsignarIdentificacion({ t, onListo }) {
 
 // ─────────────── Etapa 2 ───────────────
 // Lo que Ceci completa o confirma en la guía depende del producto (lo manda la API en `campos`):
-// Patrimonial y Elite → el n° de solicitud (ya viene del correo de Allianz); OptiMaxx Plus → monto y datos.
+// Patrimonial y Elite → monto y n° de solicitud (este ya viene del correo de Allianz); OptiMaxx Plus → monto y datos.
 const CAMPO_GUIA = {
   monto: ['Monto', '$50,000 MXN'],
   datos_deposito: ['Datos para depositar', 'CLABE 0123… a nombre de Allianz México'],
@@ -198,7 +198,9 @@ export function GuiaAportacion({ t, onListo }) {
   let vista = g.texto || ''
   for (const c of campos) {
     const nuevo = val(c.clave) || '[completar]'
-    if (c.clave === 'monto') vista = vista.replace(/• Monto: .*/, `• Monto: ${nuevo}`)
+    // Guía general (OptiMaxx Plus): líneas "• Monto:" / "• Datos para depositar:". Las de Patrimonial y
+    // Elite llevan el monto y el n° de solicitud dentro del texto: se reemplaza el valor anterior.
+    if (c.clave === 'monto' && /• Monto: /.test(vista)) vista = vista.replace(/• Monto: .*/, `• Monto: ${nuevo}`)
     else if (c.clave === 'datos_deposito') vista = vista.replace(/• Datos para depositar: .*/, `• Datos para depositar: ${nuevo}`)
     else if (c.valor) vista = vista.split(c.valor).join(nuevo)
     else vista = vista.replace('[completar]', nuevo)
@@ -225,7 +227,7 @@ export function GuiaAportacion({ t, onListo }) {
         </div>
         <p className="text-[12px] text-muted">
           No sale al cliente ni al asesor hasta que la apruebes.{' '}
-          {confirma ? 'Revisa que el número de solicitud sea el correcto: es la referencia del pago.'
+          {confirma ? 'Completa el monto y revisa que el número de solicitud sea el correcto: es la referencia del pago.'
                     : 'Completa el monto y los datos para depositar.'}
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
