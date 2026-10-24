@@ -194,6 +194,7 @@ export function GuiaAportacion({ t, onListo }) {
   const completa = campos.every(c => val(c.clave))
   const cambiado = campos.some(c => val(c.clave) !== (c.valor || ''))
   const confirma = campos.some(c => c.clave === 'solicitud')
+  const sinDatos = g.faltan_del_ticket || []  // póliza / n° de ticket / nombre: sin eso no se aprueba
   // La guía sale por la plantilla de WhatsApp: solo cambian estos datos; el resto lo pone el sistema.
   let vista = g.texto || ''
   for (const c of campos) {
@@ -213,7 +214,10 @@ export function GuiaAportacion({ t, onListo }) {
       const r = await tapi.post(`/api/tickets-allianz/aprobacion/${g.id}`, { accion, usuario: 'Ceci', ...extra })
       onListo?.(r.data?.motivo)
     } catch (err) {
-      setError(err.response?.data?.detail || 'No se pudo guardar.')
+      const detalle = err.response?.data?.detail || 'No se pudo guardar.'
+      // Al aprobar, el sistema completó la guía con datos nuevos del ticket: recargar para ver la versión nueva.
+      if (/revisa la versión \d+/.test(detalle)) onListo?.(detalle)
+      else setError(detalle)
     } finally { setBusy(false) }
   }
   const valores = () => Object.fromEntries(campos.map(c => [c.clave, val(c.clave)]))
@@ -242,9 +246,14 @@ export function GuiaAportacion({ t, onListo }) {
         </div>
         <div className="text-[11px] text-muted">Así le llega al cliente:</div>
         <pre className="text-[12px] whitespace-pre-wrap bg-white/80 rounded-lg p-2 text-deep font-sans">{vista}</pre>
+        {sinDatos.length > 0 && (
+          <div className="text-[12px] text-rose-600">
+            Al ticket le falta {sinDatos.join(' y ')}: así la guía le llega rota al cliente. Descártala y mándala a mano.
+          </div>
+        )}
         {error && <div className="text-[12px] text-rose-600">{error}</div>}
         <div className="flex gap-2 flex-wrap">
-          <button disabled={busy || !completa} onClick={() => mandar('aprobar', valores())}
+          <button disabled={busy || !completa || sinDatos.length > 0} onClick={() => mandar('aprobar', valores())}
             className="btn-primary text-[12px] px-3 py-1.5">Aprobar y enviar</button>
           <button disabled={busy || !cambiado} onClick={() => mandar('corregir', valores())}
             className="text-[12px] px-3 py-1.5 border border-border rounded-lg bg-white/80">Guardar sin enviar</button>
