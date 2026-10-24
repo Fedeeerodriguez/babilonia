@@ -308,8 +308,9 @@ export function AprobarCorreo({ a, onListo }) {
   if (a.estado !== 'pendiente_ceci') return null
 
   const decidir = async (decision) => {
+    const a_quien = a.canal === 'email_cliente' ? 'al cliente' : 'a Allianz'  // los críticos van al cliente
     const q = decision === 'enviar'
-      ? '¿Enviar este correo a Allianz tal como está? Sale en el próximo ciclo.'
+      ? `¿Enviar este correo ${a_quien} tal como está? Sale en el próximo ciclo.`
       : '¿Descartar este correo? No se manda.'
     if (!window.confirm(q)) return
     setBusy(true); setError(null)
