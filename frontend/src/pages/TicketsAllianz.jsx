@@ -102,7 +102,6 @@ export default function TicketsAllianz() {
           <p className="text-muted text-sm">
             El gestor de tickets Allianz vive en un servicio aparte. Configurá la variable
             <code className="mx-1 px-1.5 py-0.5 rounded bg-bone-200 text-deep text-[12px]">VITE_TICKETS_ALLIANZ_API</code>
-            (y opcionalmente <code className="mx-1 px-1.5 py-0.5 rounded bg-bone-200 text-deep text-[12px]">VITE_TICKETS_ALLIANZ_TOKEN</code>)
             con la URL de ese servicio y reconstruí el frontend.
           </p>
         </div>
