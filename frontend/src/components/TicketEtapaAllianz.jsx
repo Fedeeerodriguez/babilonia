@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Bell, ChevronDown, ChevronRight, UserCheck, AlertTriangle, FileCheck2, Send, FilePlus2, Paperclip, Eye } from 'lucide-react'
-import tapi from '../utils/ticketsAllianzApi'
+import tapi, { usuarioActual } from '../utils/ticketsAllianzApi'
 
 // Etapa 1 del gestor Allianz (proceso largo): en qué etapa está el ticket, cuándo es el próximo
 // recordatorio, por qué necesita a Ceci, la línea de tiempo C1→C5 y la asignación manual de
@@ -211,7 +211,7 @@ export function GuiaAportacion({ t, onListo }) {
     if (accion === 'descartar' && !window.confirm('¿Descartar la guía? No se le manda nada al cliente.')) return
     setBusy(true); setError(null)
     try {
-      const r = await tapi.post(`/api/tickets-allianz/aprobacion/${g.id}`, { accion, usuario: 'Ceci', ...extra })
+      const r = await tapi.post(`/api/tickets-allianz/aprobacion/${g.id}`, { accion, usuario: usuarioActual(), ...extra })
       onListo?.(r.data?.motivo)
     } catch (err) {
       const detalle = err.response?.data?.detail || 'No se pudo guardar.'
@@ -283,7 +283,7 @@ export function MarcarEnviado({ t, onListo }) {
     if (!window.confirm(q)) return
     setBusy(true); setError(null)
     try {
-      await tapi.post(`/api/tickets-allianz/${t.id}/etapa`, { etapa: 'documentos_enviados', usuario: 'Ceci' })
+      await tapi.post(`/api/tickets-allianz/${t.id}/etapa`, { etapa: 'documentos_enviados', usuario: usuarioActual() })
       onListo?.()
     } catch (err) {
       setError(err.response?.data?.detail || 'No se pudo marcar.')
@@ -315,7 +315,7 @@ export function AprobarCorreo({ a, onListo }) {
     if (!window.confirm(q)) return
     setBusy(true); setError(null)
     try {
-      const r = await tapi.post(`/api/tickets-allianz/accion/${a.id}/aprobar`, { decision, usuario: 'Ceci' })
+      const r = await tapi.post(`/api/tickets-allianz/accion/${a.id}/aprobar`, { decision, usuario: usuarioActual() })
       onListo?.(r.data?.motivo)
     } catch (err) {
       setError(err.response?.data?.detail || 'No se pudo guardar.')
@@ -364,7 +364,7 @@ export function AbrirTramite({ onListo }) {
   const cambiar = (k, v) => { setF(s => ({ ...s, [k]: v })); setVista(null) }
   const cuerpo = async () => ({
     tramite: f.tramite === 'otro' ? f.otro.trim() : f.tramite,
-    poliza: f.poliza.trim(), nota: f.nota.trim() || null, usuario: 'Ceci',
+    poliza: f.poliza.trim(), nota: f.nota.trim() || null, usuario: usuarioActual(),
     adjuntos: await Promise.all(archivos.map(leerArchivo)),
   })
 
