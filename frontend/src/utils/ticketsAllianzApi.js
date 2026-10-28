@@ -24,7 +24,11 @@ tapi.interceptors.response.use(
     if (err.response?.status === 401) {
       localStorage.removeItem('token')
       localStorage.removeItem('user')
-      if (location.pathname !== '/login') location.href = '/login'
+      if (location.pathname !== '/login') {
+        // Después del login vuelve a esta página (ej. el link de un aviso a un ticket).
+        try { sessionStorage.setItem('volver', location.pathname + location.search) } catch { /* sin storage */ }
+        location.href = '/login'
+      }
     }
     return Promise.reject(err)
   },

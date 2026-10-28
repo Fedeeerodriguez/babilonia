@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { ArrowRight } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import Logo from '../components/Logo'
@@ -11,6 +11,11 @@ export default function Login() {
   const [loading, setLoading] = useState(false)
   const { login } = useAuth()
   const nav = useNavigate()
+  // Si llegó desde una página protegida (ej. el link de un aviso), vuelve ahí; solo rutas propias.
+  let volver = null
+  try { volver = sessionStorage.getItem('volver') } catch { /* sin storage */ }
+  const desde = useLocation().state?.desde || volver
+  const destino = typeof desde === 'string' && desde.startsWith('/') && !desde.startsWith('//') ? desde : '/dashboard'
 
   // Modo demo: muestra un botón para autocompletar credenciales (VITE_DEMO_MODE=1)
   const demoMode = import.meta.env.VITE_DEMO_MODE === '1'
@@ -21,7 +26,11 @@ export default function Login() {
 
   const submit = async (e) => {
     e.preventDefault(); setErr(''); setLoading(true)
-    try { await login(email, password); nav('/dashboard') }
+    try {
+      await login(email, password)
+      try { sessionStorage.removeItem('volver') } catch { /* sin storage */ }
+      nav(destino, { replace: true })
+    }
     catch (e) { setErr(e.response?.data?.detail || 'Error al iniciar sesión') }
     finally { setLoading(false) }
   }

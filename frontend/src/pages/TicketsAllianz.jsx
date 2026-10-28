@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import {
   RefreshCw, CheckCircle2, AlertTriangle, Pencil, Clock, Mail,
   ThumbsUp, ThumbsDown, Meh, Target, Send,
@@ -41,6 +42,24 @@ const chipCalif = (c) =>
   : c === 'mala' ? 'bg-rose-100 text-rose-700'
   : 'bg-bone-200 text-muted'
 
+// Lleva la vista al ticket dejando lugar para la barra superior fija (si no, le tapa el título).
+function irAlTicket(id) {
+  const el = document.getElementById(`ticket-${id}`)
+  if (!el) return
+  let cont = el.parentElement
+  while (cont && cont !== document.body) {
+    const oy = getComputedStyle(cont).overflowY
+    if ((oy === 'auto' || oy === 'scroll') && cont.scrollHeight > cont.clientHeight) break
+    cont = cont.parentElement
+  }
+  const margen = 88
+  if (cont && cont !== document.body) {
+    cont.scrollTo({ top: cont.scrollTop + el.getBoundingClientRect().top - cont.getBoundingClientRect().top - margen, behavior: 'smooth' })
+  } else {
+    window.scrollTo({ top: window.scrollY + el.getBoundingClientRect().top - margen, behavior: 'smooth' })
+  }
+}
+
 export default function TicketsAllianz() {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -58,6 +77,25 @@ export default function TicketsAllianz() {
   }
   useEffect(() => { if (ticketsAllianzConfigurada) load(); else setLoading(false) }, [])
   const cambiarFiltro = (f) => { setFiltro(f); load(f) }
+
+  // Link de un aviso (…/tickets-allianz?ticket=7): abre ese ticket y lo resalta. Si no está entre los
+  // abiertos, lo busca en "Para Ceci"; si tampoco, avisa (puede estar cerrado).
+  const ticketDelLink = Number(new URLSearchParams(useLocation().search).get('ticket')) || null
+  const [resaltado, setResaltado] = useState(null)
+  const buscado = useRef(false)
+  useEffect(() => {
+    if (!ticketDelLink || !data || buscado.current) return
+    if ((data.items || []).some(t => t.id === ticketDelLink)) {
+      buscado.current = true
+      setResaltado(ticketDelLink)
+      requestAnimationFrame(() => irAlTicket(ticketDelLink))
+    } else if (filtro === '') {
+      cambiarFiltro('para_ceci')
+    } else {
+      buscado.current = true
+      setMsg({ ok: false, text: 'El ticket del link ya no está en la lista: puede estar cerrado.' })
+    }
+  }, [data])
 
   const patchAccion = (accionId, cambios) =>
     setData(d => ({
@@ -164,7 +202,8 @@ export default function TicketsAllianz() {
       ) : (
         <div className="space-y-5">
           {data.items.map(t => (
-            <div key={t.id} className="card shadow-soft overflow-hidden">
+            <div key={t.id} id={`ticket-${t.id}`}
+              className={`card shadow-soft overflow-hidden ${resaltado === t.id ? 'ring-2 ring-amber-400' : ''}`}>
               {/* Cabecera del ticket */}
               <div className="flex items-center justify-between px-5 py-3 bg-bone-100/60 border-b border-border/60">
                 <div className="min-w-0">
