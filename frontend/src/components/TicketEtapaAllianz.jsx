@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Bell, ChevronDown, ChevronRight, UserCheck, AlertTriangle, FileCheck2, Send, FilePlus2, Paperclip, Eye } from 'lucide-react'
+import { Bell, ChevronDown, ChevronRight, UserCheck, AlertTriangle, FileCheck2, Send, FilePlus2, Paperclip, Eye, MessageCircle, FileText } from 'lucide-react'
 import tapi, { usuarioActual } from '../utils/ticketsAllianzApi'
 
 // Etapa 1 del gestor Allianz (proceso largo): en qué etapa está el ticket, cuándo es el próximo
@@ -345,11 +345,69 @@ const leerArchivo = (file) => new Promise((ok, mal) => {
 
 const VACIO = { tramite: '', otro: '', poliza: '', nota: '' }
 
+// Etapa 3B: lo que el cliente mandó por WhatsApp (transferencia, estado de cuenta). El sistema lo
+// baja de WATI; Ceci marca qué adjuntar.
+const verArchivo = (a) => {
+  const bytes = Uint8Array.from(atob(a.base64), c => c.charCodeAt(0))
+  window.open(URL.createObjectURL(new Blob([bytes], { type: a.tipo })), '_blank')
+}
+const kb = (n) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`)
+const diaHora = (iso) => new Date(iso).toLocaleString('es-MX', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+
+function ArchivosWhatsapp({ poliza, wa, setWa, onCambio }) {
+  const traer = async () => {
+    setWa({ cargando: true, archivos: [] })
+    try {
+      const r = (await tapi.post('/api/tickets-allianz/tramites/archivos-whatsapp', { poliza: poliza.trim(), dias: 14 })).data
+      setWa({ ...r, archivos: (r.archivos || []).map(a => ({ ...a, elegido: false })) })
+    } catch (err) {
+      setWa({ ok: false, motivo: err.response?.data?.detail || 'No se pudieron traer los archivos de WhatsApp.', archivos: [] })
+    }
+  }
+  const alternar = (i) => {
+    setWa(w => ({ ...w, archivos: w.archivos.map((a, j) => (j === i ? { ...a, elegido: !a.elegido } : a)) }))
+    onCambio()
+  }
+  return (
+    <div className="space-y-2">
+      <button type="button" id="tramite-traer-whatsapp" disabled={!poliza.trim() || wa?.cargando} onClick={traer}
+        className="text-[12px] text-cobalt-700 flex items-center gap-1 disabled:opacity-50">
+        <MessageCircle size={13} /> {wa?.cargando ? 'Buscando en WhatsApp…' : 'Traer archivos de WhatsApp del cliente'}
+      </button>
+      {wa && !wa.cargando && (
+        <div className={`text-[12px] ${wa.ok ? 'text-muted' : 'text-rose-600'}`}>
+          {wa.ok && wa.cliente ? `${wa.cliente}${wa.telefono ? ` (${wa.telefono})` : ''}: ` : ''}{wa.motivo}
+          {wa.ok && wa.archivos.length > 0 && ' · marca los que van al correo.'}
+        </div>
+      )}
+      {wa?.archivos?.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {wa.archivos.map((a, i) => (
+            <div key={a.nombre} className={`rounded-lg border p-1.5 text-[11px] ${a.elegido ? 'border-cobalt ring-1 ring-cobalt' : 'border-border/60'}`}>
+              <button type="button" onClick={() => verArchivo(a)} title="Ver el archivo"
+                className="w-full h-20 rounded bg-bone-100/60 flex items-center justify-center overflow-hidden">
+                {a.tipo.startsWith('image/')
+                  ? <img src={`data:${a.tipo};base64,${a.base64}`} alt={a.nombre} className="h-full w-full object-cover" />
+                  : <span className="flex flex-col items-center text-muted"><FileText size={22} />PDF</span>}
+              </button>
+              <label className="mt-1 flex items-center gap-1 cursor-pointer">
+                <input type="checkbox" id={`tramite-wa-${i}`} checked={a.elegido} onChange={() => alternar(i)} />
+                <span>{diaHora(a.fecha)} · {kb(a.bytes)}</span>
+              </label>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function AbrirTramite({ onListo }) {
   const [abierto, setAbierto] = useState(false)
   const [catalogo, setCatalogo] = useState([])
   const [f, setF] = useState(VACIO)
   const [archivos, setArchivos] = useState([])
+  const [wa, setWa] = useState(null)
   const [vista, setVista] = useState(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
@@ -361,11 +419,14 @@ export function AbrirTramite({ onListo }) {
       catch { setError('No se pudo cargar la lista de trámites.') }
     }
   }
-  const cambiar = (k, v) => { setF(s => ({ ...s, [k]: v })); setVista(null) }
+  const cambiar = (k, v) => { setF(s => ({ ...s, [k]: v })); setVista(null); if (k === 'poliza') setWa(null) }
   const cuerpo = async () => ({
     tramite: f.tramite === 'otro' ? f.otro.trim() : f.tramite,
     poliza: f.poliza.trim(), nota: f.nota.trim() || null, usuario: usuarioActual(),
-    adjuntos: await Promise.all(archivos.map(leerArchivo)),
+    adjuntos: [
+      ...await Promise.all(archivos.map(leerArchivo)),
+      ...(wa?.archivos || []).filter(a => a.elegido).map(({ nombre, tipo, base64 }) => ({ nombre, tipo, base64 })),
+    ],
   })
 
   const verVista = async () => {
@@ -382,7 +443,7 @@ export function AbrirTramite({ onListo }) {
     setBusy(true); setError(null)
     try {
       const r = (await tapi.post('/api/tickets-allianz/tramites', await cuerpo())).data
-      setF(VACIO); setArchivos([]); setVista(null); setAbierto(false)
+      setF(VACIO); setArchivos([]); setWa(null); setVista(null); setAbierto(false)
       onListo?.(r.sin_destino ? 'Trámite abierto, pero falta el correo de Allianz (ALLIANZ_DEST): queda bloqueado'
                               : 'Trámite abierto: el correo sale en el próximo ciclo')
     } catch (err) {
@@ -432,6 +493,7 @@ export function AbrirTramite({ onListo }) {
               onChange={e => { setArchivos(Array.from(e.target.files || [])); setVista(null) }} />
           </label>
           {archivos.length > 0 && <div className="text-[12px] text-muted">{archivos.map(a => a.name).join(' · ')}</div>}
+          <ArchivosWhatsapp poliza={f.poliza} wa={wa} setWa={setWa} onCambio={() => setVista(null)} />
 
           {vista && (
             <div className="rounded-lg border border-border/60 bg-white/70 p-3 space-y-1.5 text-[12px]">
