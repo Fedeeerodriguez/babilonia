@@ -19,7 +19,7 @@ export const MOTIVO_CECI = {
   guia_por_aprobar: 'Guía de aportación por aprobar',
 }
 
-const PROCESO = { largo: 'Proceso largo', corto: 'Proceso corto', tramite: 'Trámite' }
+const PROCESO = { largo: 'Proceso largo', corto: 'Proceso corto', tramite: 'Trámite', cobranza: 'Cobranza' }
 const RECORDATORIO = { requerimiento: 'del pedido de Allianz', esperando_allianz: 'esperando a Allianz', pago: 'del pago' }
 
 const PARA = { ceci: 'Ceci', asesor: 'Asesor', cliente: 'Cliente', allianz: 'Allianz' }
