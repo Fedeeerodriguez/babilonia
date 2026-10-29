@@ -452,6 +452,7 @@ export function AbrirTramite({ onListo }) {
   }
 
   const listo = f.tramite && (f.tramite !== 'otro' || f.otro.trim()) && f.poliza.trim()
+  const requisitos = catalogo.find(t => t.clave === f.tramite)?.requisitos || []
   const entrada = 'w-full text-[13px] border border-border rounded-lg px-2 py-1.5 bg-white/90'
   return (
     <div className="card shadow-soft mb-5">
@@ -481,6 +482,11 @@ export function AbrirTramite({ onListo }) {
                 onChange={e => cambiar('poliza', e.target.value)} className={entrada} />
             </label>
           </div>
+          {requisitos.length > 0 && (
+            <div className="text-[12px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5">
+              Este trámite lleva adjuntos: {requisitos.join(' y ')}.
+            </div>
+          )}
           {f.tramite === 'otro' && (
             <input id="tramite-otro" value={f.otro} placeholder="Nombre del trámite (ej. Aplicación de pago)"
               onChange={e => cambiar('otro', e.target.value)} className={entrada} />
