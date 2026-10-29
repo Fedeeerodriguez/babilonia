@@ -17,6 +17,42 @@ titular (no para un hijo, no es un seguro puro).
 - **Primas comprometidas** con periodicidad a elección: mensual, trimestral,
   semestral o anual.
 - Admite **primas adicionales** cuando el cliente quiera.
+- El cobro de la mensualidad es **automático** (cargo a la cuenta o tarjeta que registró
+  el cliente). No tiene que depositar: solo tener el monto disponible en su cuenta.
+
+## Cómo hacer una aportación adicional (adelantar mensualidades o abonar al fondo)
+Pasos de Ceci (Babilonia), 29/10/2026. El importe va en **múltiplos de la mensualidad**,
+nunca menor: si su plan es de $2,000 mensuales, la aportación es de $2,000 o más.
+1. Elegir qué quiere hacer:
+    - **Adelantar mensualidades**, para que se corra la fecha del siguiente cargo. Ejemplo:
+      plan de $2,000, adelanta dos meses aportando $4,000.
+    - **Abonar a su fondo indexado**, y que los cargos sigan mes con mes sin cambios.
+2. Hacer la **transferencia** de forma normal:
+    - con cuenta **BBVA**: "Pago de servicios" con el **CIE 1149598**;
+    - con cuenta de otro banco: transferencia a la cuenta BBVA **012 914002011 49598 0**.
+    - En los dos casos, en **concepto y referencia** va su **número de cliente** (viene en
+      la carátula de su póliza como "identificación del cliente").
+    - Beneficiario: **Allianz de México SA CIA de SEGUROS**.
+3. Mandar un correo a **cliente.optimaxx@allianz.com.mx** con copia a
+   **integraciones@babilonia.ai**, pidiendo que apliquen la aportación según lo que eligió
+   (adelantar o abonar al fondo). En el asunto: su nombre completo y número de póliza.
+   Adjuntar el comprobante de la transferencia.
+
+## Cómo pagar una mensualidad atrasada
+Pasos de Ceci (Babilonia), 29/10/2026. Si un cargo automático no pasó, el cliente paga por
+transferencia:
+1. Con cuenta **BBVA**: "Pago de servicios" con el **CIE 1149598**.
+2. Con cuenta de otro banco: transferencia a la cuenta BBVA **012 914002011 49598 0**.
+    - En **concepto y referencia** va **SOLO su número de cliente** (viene en la carátula de
+      su póliza como "identificación del cliente"). Es muy importante: si pone otra cosa,
+      Allianz no reconoce el pago.
+    - Beneficiario: **Allianz de México SA CIA de SEGUROS**.
+3. Mandar un correo a **cliente.optimaxx@allianz.com.mx** con copia a
+   **integraciones@babilonia.ai** pidiendo la aplicación de las mensualidades. En el asunto:
+   su nombre completo y número de póliza. Adjuntar el comprobante de la transferencia.
+
+**Importante:** después de **60 días de atraso**, Allianz puede cancelar el plan (PPR) en
+cualquier momento. Conviene ponerse al corriente cuanto antes.
 
 ## Plazo
 - Plazo comprometido: **mínimo 5 años, máximo 25 años.**
