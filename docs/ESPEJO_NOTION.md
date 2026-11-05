@@ -45,8 +45,8 @@ El formato de `paginas.props` es el mismo que devuelve hoy `notion_client._flatt
 2. Hacer la carga inicial: `python -m app.services.espejo.worker --completa`. Se puede pasar una sola base, por ejemplo `--completa emisiones`.
 3. Desplegar el worker:
    - En EasyPanel → **+ Service → App** → `babilonia-espejo`, mismo repo, build path `backend/`.
-   - **Command:** `python -m app.services.espejo.worker`.
-   - Mismas variables que el backend, más `ESPEJO_DATABASE_URL`.
+   - Variable **`ROL=espejo`**: con eso el contenedor corre el worker en vez de la API. No hace falta tocar el comando.
+   - Mismas variables que el backend, más `ESPEJO_DATABASE_URL`. Conviene `AVISOS_CITAS_ACTIVO=0`, porque ese vigilante ya corre en el backend.
    - No necesita dominio ni puerto.
 4. Crear el webhook en Notion:
    1. Ir a https://www.notion.so/profile/integrations → la integración de Tomi → **Webhooks** → **Create subscription**.
