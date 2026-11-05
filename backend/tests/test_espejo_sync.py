@@ -192,6 +192,7 @@ def test_pendientes_del_webhook_se_releen_de_notion():
 def test_bases_configuradas_lee_todas_las_notion_db():
     env = {"NOTION_DB_EMISIONES": "x1", "NOTION_DB_CLIENTES_PLU3": " x2 ", "NOTION_DB_VACIA": "", "OTRA": "y"}
     assert bases_configuradas(env) == {"emisiones": "x1", "clientes_plu3": "x2"}
+    assert bases_configuradas({**env, "ESPEJO_EXCLUIR": " Clientes_PLU3 , otra"}) == {"emisiones": "x1"}
 
 
 def test_corte_de_red_se_reintenta():

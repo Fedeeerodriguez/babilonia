@@ -30,10 +30,12 @@ _META = ("_id", "_url", "_title")
 
 
 def bases_configuradas(env: Optional[dict] = None) -> dict[str, str]:
-    """{slug: db_id} de todas las variables NOTION_DB_* con valor (slug = sufijo en minúsculas)."""
+    """{slug: db_id} de todas las variables NOTION_DB_* con valor (slug = sufijo en minúsculas),
+    menos las de ESPEJO_EXCLUIR (ej. puntos_convencion: Notion no puede calcular una de sus fórmulas)."""
     env = os.environ if env is None else env
+    excluir = {x.strip().lower() for x in (env.get("ESPEJO_EXCLUIR") or "").split(",") if x.strip()}
     return {k[len("NOTION_DB_"):].lower(): v.strip() for k, v in env.items()
-            if k.startswith("NOTION_DB_") and v and v.strip()}
+            if k.startswith("NOTION_DB_") and v and v.strip() and k[len("NOTION_DB_"):].lower() not in excluir}
 
 
 def _texto(v) -> list[str]:
