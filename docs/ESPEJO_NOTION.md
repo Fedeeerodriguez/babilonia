@@ -37,6 +37,7 @@ El formato de `paginas.props` es el mismo que devuelve hoy `notion_client._flatt
 | `ESPEJO_HORA_COMPLETA` | Hora UTC de la carga completa diaria. Default 8. |
 | `ESPEJO_NOTION_RPS` | Pedidos por segundo a Notion. Default 2,5; Notion permite 3. |
 | `ESPEJO_VIEJA_SEG` | Pasado este atraso, una base cuenta como vieja en el estado. Default 600. |
+| `ESPEJO_EXCLUIR` | Bases que no se copian, separadas por coma. Hoy: `puntos_convencion` (Notion falla al calcular una de sus fórmulas). |
 | `NOTION_WEBHOOK_TOKEN` | Opcional. Si no está, se usa el que Notion manda al crear la suscripción. |
 
 ## Puesta en marcha
