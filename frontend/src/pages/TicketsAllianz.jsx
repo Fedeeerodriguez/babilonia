@@ -67,7 +67,7 @@ export default function TicketsAllianz() {
   const [msg, setMsg] = useState(null)
   const [busy, setBusy] = useState(null)        // accion id en proceso
   const [edit, setEdit] = useState({})          // { [accionId]: textoBorrador }
-  const [filtro, setFiltro] = useState('')      // '' = todos · 'para_ceci' = lo que necesita a Ceci
+  const [filtro, setFiltro] = useState('')      // '' = tickets · 'para_ceci' = lo que necesita a Ceci · 'cobranza' = cargos rechazados
 
   const load = (f = filtro) => {
     setLoading(true)
@@ -80,7 +80,7 @@ export default function TicketsAllianz() {
   const cambiarFiltro = (f) => { setFiltro(f); load(f) }
 
   // Link de un aviso (…/tickets-allianz?ticket=7): abre ese ticket y lo resalta. Si no está entre los
-  // abiertos, lo busca en "Para Ceci"; si tampoco, avisa (puede estar cerrado).
+  // abiertos, lo busca en "Para Ceci" y después en "Cobranzas"; si tampoco, avisa (puede estar cerrado).
   const ticketDelLink = Number(new URLSearchParams(useLocation().search).get('ticket')) || null
   const [resaltado, setResaltado] = useState(null)
   const buscado = useRef(false)
@@ -92,6 +92,8 @@ export default function TicketsAllianz() {
       requestAnimationFrame(() => irAlTicket(ticketDelLink))
     } else if (filtro === '') {
       cambiarFiltro('para_ceci')
+    } else if (filtro === 'para_ceci') {
+      cambiarFiltro('cobranza')        // los avisos de cobranza también traen el link al panel
     } else {
       buscado.current = true
       setMsg({ ok: false, text: 'El ticket del link ya no está en la lista: puede estar cerrado.' })
@@ -181,14 +183,20 @@ export default function TicketsAllianz() {
 
       <AbrirTramite onListo={(m) => { setMsg({ ok: true, text: `${m} ✓` }); load() }} />
 
-      <div className="flex gap-2 mb-5">
-        {[['', 'Todos'], ['para_ceci', 'Para Ceci']].map(([f, label]) => (
-          <button key={f || 'todos'} onClick={() => cambiarFiltro(f)}
+      <div className="flex flex-wrap gap-2 mb-5">
+        {[['', 'Tickets'], ['para_ceci', 'Para Ceci'], ['cobranza', 'Cobranzas']].map(([f, label]) => (
+          <button key={f || 'todos'} id={`filtro-${f || 'tickets'}`} onClick={() => cambiarFiltro(f)}
             className={`text-[13px] px-3 py-1.5 rounded-lg border ${filtro === f ? 'bg-deep text-white border-deep' : 'border-border text-muted'}`}>
-            {label}{f === 'para_ceci' && r?.para_ceci ? ` (${r.para_ceci})` : ''}
+            {label}{f === 'para_ceci' && r?.para_ceci ? ` (${r.para_ceci})` : ''}{f === 'cobranza' && r?.cobranzas ? ` (${r.cobranzas})` : ''}
           </button>
         ))}
       </div>
+      {filtro === 'cobranza' && (
+        <p className="text-[12px] text-muted -mt-3 mb-5">
+          Cargos automáticos que no pasaron (últimos 14 días). Por cada uno se avisa al asesor y a ti; al cliente
+          no, porque le escribe el equipo de cobranza. Revisa el texto de cada aviso y califícalo.
+        </p>
+      )}
 
       {msg && (
         <div className={`mb-4 text-[13px] flex items-center gap-1.5 ${msg.ok ? 'text-emerald-600' : 'text-rose-600'}`}>
@@ -199,7 +207,9 @@ export default function TicketsAllianz() {
       {loading ? (
         <div className="text-muted">Cargando…</div>
       ) : (data?.items || []).length === 0 ? (
-        <div className="card p-8 text-center text-muted shadow-soft">No hay tickets para revisar 🎉</div>
+        <div className="card p-8 text-center text-muted shadow-soft">
+          {filtro === 'cobranza' ? 'No hubo cargos rechazados en los últimos 14 días.' : 'No hay tickets para revisar 🎉'}
+        </div>
       ) : (
         <div className="space-y-5">
           {data.items.map(t => (
