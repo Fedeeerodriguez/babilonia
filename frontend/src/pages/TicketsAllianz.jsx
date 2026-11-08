@@ -7,6 +7,7 @@ import {
 import tapi, { ticketsAllianzConfigurada } from '../utils/ticketsAllianzApi'
 import {
   AbrirTramite, AprobarCorreo, AsignarIdentificacion, GuiaAportacion, LineaTiempo, MarcarEnviado, ResumenEtapa,
+  SolicitudTommy,
 } from '../components/TicketEtapaAllianz'
 
 // NOTA: el gestor de tickets Allianz vive FUERA de Tomi (proyecto aparte). Esta sección solo
@@ -222,6 +223,7 @@ export default function TicketsAllianz() {
 
               {/* Etapa del proceso (Etapa 1): etapa, próximo recordatorio, por qué necesita a Ceci */}
               <ResumenEtapa t={t} />
+              <SolicitudTommy t={t} onListo={(m) => { setMsg({ ok: true, text: `${m} ✓` }); load() }} />
               <AsignarIdentificacion t={t} onListo={() => { setMsg({ ok: true, text: 'Cliente y asesor asignados ✓' }); load() }} />
               <GuiaAportacion key={`guia-${t.id}-${t.guia_pendiente?.version}`} t={t}
                 onListo={(m) => { setMsg({ ok: true, text: `${m || 'Listo'} ✓` }); load() }} />

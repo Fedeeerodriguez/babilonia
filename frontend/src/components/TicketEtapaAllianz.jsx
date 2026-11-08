@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Bell, ChevronDown, ChevronRight, UserCheck, AlertTriangle, FileCheck2, Send, FilePlus2, Paperclip, Eye, MessageCircle, FileText } from 'lucide-react'
 import tapi, { usuarioActual } from '../utils/ticketsAllianzApi'
 
@@ -8,6 +8,7 @@ import tapi, { usuarioActual } from '../utils/ticketsAllianzApi'
 // Etapa 2 (proceso corto + trámites): la guía de aportación que Ceci aprueba antes de que salga y
 // el botón para marcar a mano el pago (Patrimonial) o una respuesta mandada por fuera.
 // Etapa 3: abrir un trámite desde el panel y aprobar los correos retenidos para Ceci.
+// Etapa 3B: la solicitud que dejó Tommy cuando el cliente pidió el trámite por WhatsApp.
 
 export const MOTIVO_CECI = {
   sin_identificar: 'Cliente/asesor sin identificar',
@@ -17,6 +18,7 @@ export const MOTIVO_CECI = {
   revisar: 'Revisar a mano',
   rebote: 'Respuesta rebotada',
   guia_por_aprobar: 'Guía de aportación por aprobar',
+  solicitud_tommy: 'El cliente pidió un trámite',
 }
 
 const PROCESO = { largo: 'Proceso largo', corto: 'Proceso corto', tramite: 'Trámite', cobranza: 'Cobranza' }
@@ -354,16 +356,17 @@ const verArchivo = (a) => {
 const kb = (n) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`)
 const diaHora = (iso) => new Date(iso).toLocaleString('es-MX', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
 
-function ArchivosWhatsapp({ poliza, wa, setWa, onCambio }) {
+function ArchivosWhatsapp({ poliza, wa, setWa, onCambio, auto = false }) {
   const traer = async () => {
     setWa({ cargando: true, archivos: [] })
     try {
       const r = (await tapi.post('/api/tickets-allianz/tramites/archivos-whatsapp', { poliza: poliza.trim(), dias: 14 })).data
-      setWa({ ...r, archivos: (r.archivos || []).map(a => ({ ...a, elegido: false })) })
+      setWa({ ...r, archivos: (r.archivos || []).map(a => ({ ...a, elegido: auto })) })
     } catch (err) {
       setWa({ ok: false, motivo: err.response?.data?.detail || 'No se pudieron traer los archivos de WhatsApp.', archivos: [] })
     }
   }
+  useEffect(() => { if (auto && poliza.trim()) traer() }, [])  // eslint-disable-line react-hooks/exhaustive-deps
   const alternar = (i) => {
     setWa(w => ({ ...w, archivos: w.archivos.map((a, j) => (j === i ? { ...a, elegido: !a.elegido } : a)) }))
     onCambio()
@@ -402,10 +405,10 @@ function ArchivosWhatsapp({ poliza, wa, setWa, onCambio }) {
   )
 }
 
-export function AbrirTramite({ onListo }) {
-  const [abierto, setAbierto] = useState(false)
+export function AbrirTramite({ onListo, inicial = null }) {
+  const [abierto, setAbierto] = useState(!!inicial)
   const [catalogo, setCatalogo] = useState([])
-  const [f, setF] = useState(VACIO)
+  const [f, setF] = useState(inicial ? { ...VACIO, tramite: inicial.tramite, poliza: inicial.poliza, nota: inicial.nota || '' } : VACIO)
   const [archivos, setArchivos] = useState([])
   const [wa, setWa] = useState(null)
   const [vista, setVista] = useState(null)
@@ -419,10 +422,17 @@ export function AbrirTramite({ onListo }) {
       catch { setError('No se pudo cargar la lista de trámites.') }
     }
   }
+  useEffect(() => {
+    if (!inicial) return
+    tapi.get('/api/tickets-allianz/tramites/catalogo')
+      .then(r => setCatalogo(r.data.tramites || []))
+      .catch(() => setError('No se pudo cargar la lista de trámites.'))
+  }, [])  // eslint-disable-line react-hooks/exhaustive-deps
   const cambiar = (k, v) => { setF(s => ({ ...s, [k]: v })); setVista(null); if (k === 'poliza') setWa(null) }
   const cuerpo = async () => ({
     tramite: f.tramite === 'otro' ? f.otro.trim() : f.tramite,
     poliza: f.poliza.trim(), nota: f.nota.trim() || null, usuario: usuarioActual(),
+    solicitud_id: inicial?.solicitud_id ?? null,
     adjuntos: [
       ...await Promise.all(archivos.map(leerArchivo)),
       ...(wa?.archivos || []).filter(a => a.elegido).map(({ nombre, tipo, base64 }) => ({ nombre, tipo, base64 })),
@@ -455,10 +465,12 @@ export function AbrirTramite({ onListo }) {
   const requisitos = catalogo.find(t => t.clave === f.tramite)?.requisitos || []
   const entrada = 'w-full text-[13px] border border-border rounded-lg px-2 py-1.5 bg-white/90'
   return (
-    <div className="card shadow-soft mb-5">
-      <button onClick={abrirForm} className="w-full px-5 py-3 flex items-center gap-2 text-sm font-semibold text-deep">
-        {abierto ? <ChevronDown size={15} /> : <ChevronRight size={15} />} <FilePlus2 size={15} /> Abrir un trámite con Allianz
-      </button>
+    <div className={inicial ? '' : 'card shadow-soft mb-5'}>
+      {!inicial && (
+        <button onClick={abrirForm} className="w-full px-5 py-3 flex items-center gap-2 text-sm font-semibold text-deep">
+          {abierto ? <ChevronDown size={15} /> : <ChevronRight size={15} />} <FilePlus2 size={15} /> Abrir un trámite con Allianz
+        </button>
+      )}
       {abierto && (
         <div className="px-5 pb-4 space-y-3">
           <p className="text-[12px] text-muted">
@@ -499,7 +511,7 @@ export function AbrirTramite({ onListo }) {
               onChange={e => { setArchivos(Array.from(e.target.files || [])); setVista(null) }} />
           </label>
           {archivos.length > 0 && <div className="text-[12px] text-muted">{archivos.map(a => a.name).join(' · ')}</div>}
-          <ArchivosWhatsapp poliza={f.poliza} wa={wa} setWa={setWa} onCambio={() => setVista(null)} />
+          <ArchivosWhatsapp poliza={f.poliza} wa={wa} setWa={setWa} onCambio={() => setVista(null)} auto={!!inicial} />
 
           {vista && (
             <div className="rounded-lg border border-border/60 bg-white/70 p-3 space-y-1.5 text-[12px]">
@@ -518,6 +530,52 @@ export function AbrirTramite({ onListo }) {
             <button disabled={busy || !vista} onClick={abrir} className="btn-primary text-[12px] px-3 py-1.5">Abrir trámite</button>
           </div>
         </div>
+      )}
+    </div>
+  )
+}
+
+
+// Etapa 3B: el cliente le pidió el trámite a Tommy por WhatsApp. Ceci lo revisa y lo abre (el mismo
+// formulario, ya completo y con los archivos de WhatsApp marcados) o lo descarta. Nada sale sin ella.
+export function SolicitudTommy({ t, onListo }) {
+  const [revisando, setRevisando] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+  const s = t.solicitud
+  if (!s) return null
+  const descartar = async () => {
+    const motivo = window.prompt('¿Por qué la descartas? (queda en el historial)', '')
+    if (motivo === null) return
+    setBusy(true); setError(null)
+    try {
+      await tapi.post(`/api/tickets-allianz/tramites/solicitud/${t.id}/descartar`, { usuario: usuarioActual(), motivo })
+      onListo?.('Solicitud descartada')
+    } catch (err) {
+      setError(err.response?.data?.detail || 'No se pudo descartar.')
+    } finally { setBusy(false) }
+  }
+  return (
+    <div className="mx-5 mt-3 rounded-lg border border-cobalt-200 bg-cobalt-50/60 p-3 space-y-2 text-[12px]">
+      <div className="flex items-center gap-1.5 font-semibold text-deep">
+        <MessageCircle size={14} /> El cliente pidió por WhatsApp: {s.tramite_nombre || s.tramite}
+      </div>
+      <div className="text-muted">
+        Tommy ya le pidió los requisitos{s.archivos ? ` y el cliente mandó ${s.archivos} archivo(s)` : ''}.
+        Revisa que sean los correctos antes de abrirlo con Allianz.
+      </div>
+      {s.nota && <div className="text-deep">Nota del cliente: «{s.nota}»</div>}
+      {error && <div className="text-rose-600">{error}</div>}
+      {!revisando ? (
+        <div className="flex gap-2">
+          <button id={`solicitud-revisar-${t.id}`} onClick={() => setRevisando(true)} className="btn-primary text-[12px] px-3 py-1.5">
+            Revisar y abrir
+          </button>
+          <button id={`solicitud-descartar-${t.id}`} disabled={busy} onClick={descartar}
+            className="text-[12px] px-3 py-1.5 border border-border rounded-lg bg-white/80">Descartar</button>
+        </div>
+      ) : (
+        <AbrirTramite inicial={{ tramite: s.tramite, poliza: t.poliza, nota: s.nota, solicitud_id: t.id }} onListo={onListo} />
       )}
     </div>
   )
