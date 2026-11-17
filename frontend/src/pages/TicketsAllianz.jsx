@@ -43,6 +43,66 @@ const chipCalif = (c) =>
   : c === 'mala' ? 'bg-rose-100 text-rose-700'
   : 'bg-bone-200 text-muted'
 
+// Interruptor de envío real por proceso (gestor ≥ PR #15). DRY_RUN es el freno general: con él prendido no
+// sale nada aunque el interruptor esté en "Sale de verdad". Si la API no tiene el endpoint, no se muestra.
+const PROCESOS_ENVIO = [['tickets', 'Tickets'], ['cobranza', 'Cobranzas']]
+
+function EnvioReal({ estado, onCambio }) {
+  const [busy, setBusy] = useState(null)
+  const [error, setError] = useState(null)
+  if (!estado) return null
+  const cambiar = async (p, label, prender) => {
+    if (prender && !window.confirm(
+      `¿Prender el envío real de ${label}?
+
+Los mensajes de ${label.toLowerCase()} van a salir de verdad a asesores, clientes y Allianz.`
+    )) return
+    setBusy(p); setError(null)
+    try {
+      const r = await tapi.put(`/api/tickets-allianz/envio/${p}`, { encendido: prender })
+      onCambio(r.data)
+    } catch (err) {
+      setError(err.response?.data?.detail || 'No se pudo cambiar el envío')
+    } finally { setBusy(null) }
+  }
+  return (
+    <div className="card p-5 shadow-soft mb-6">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
+        <div className="text-[11px] uppercase tracking-wider text-muted">Envío real</div>
+        {estado.dry_run && (
+          <div className="text-[12px] text-amber-700">
+            Modo prueba general (DRY_RUN): no sale nada aunque un proceso esté prendido.
+          </div>
+        )}
+      </div>
+      <div className="grid sm:grid-cols-2 gap-3">
+        {PROCESOS_ENVIO.map(([p, label]) => {
+          const e = estado.procesos?.[p] || {}
+          const cuando = e.cambiado_en ? new Date(e.cambiado_en).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' }) : null
+          return (
+            <div key={p} className="flex items-center justify-between gap-3 rounded-lg border border-border px-4 py-3">
+              <div>
+                <div className="text-deep font-medium">{label}</div>
+                <div className={`text-[12px] ${e.real ? 'text-emerald-700' : 'text-muted'}`}>
+                  {e.real ? 'Sale de verdad' : e.encendido ? 'Prendido, frenado por el modo prueba' : 'Simulado: se arma pero no sale'}
+                </div>
+                {cuando && <div className="text-[11px] text-muted">Cambiado {cuando}{e.cambiado_por ? ` · ${String(e.cambiado_por).replace('panel:', '')}` : ''}</div>}
+              </div>
+              <button id={`envio-${p}`} role="switch" aria-checked={!!e.encendido} disabled={busy === p}
+                onClick={() => cambiar(p, label, !e.encendido)}
+                className={`relative w-11 h-6 rounded-full transition-colors shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-cobalt-500 ${e.encendido ? 'bg-emerald-600' : 'bg-bone-400'} ${busy === p ? 'opacity-50' : ''}`}>
+                <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${e.encendido ? 'translate-x-5' : ''}`} />
+                <span className="sr-only">{e.encendido ? `Apagar ${label}` : `Prender ${label}`}</span>
+              </button>
+            </div>
+          )
+        })}
+      </div>
+      {error && <div className="mt-2 text-[12px] text-rose-600">{error}</div>}
+    </div>
+  )
+}
+
 // Lleva la vista al ticket dejando lugar para la barra superior fija (si no, le tapa el título).
 function irAlTicket(id) {
   const el = document.getElementById(`ticket-${id}`)
@@ -77,6 +137,11 @@ export default function TicketsAllianz() {
       .finally(() => setLoading(false))
   }
   useEffect(() => { if (ticketsAllianzConfigurada) load(); else setLoading(false) }, [])
+  const [envio, setEnvio] = useState(null)       // estado del interruptor por proceso (null = API sin endpoint)
+  useEffect(() => {
+    if (ticketsAllianzConfigurada) tapi.get('/api/tickets-allianz/envio').then(r => setEnvio(r.data)).catch(() => {})
+  }, [])
+  const enVivo = PROCESOS_ENVIO.filter(([p]) => envio?.procesos?.[p]?.real).map(([, l]) => l)
   const cambiarFiltro = (f) => { setFiltro(f); load(f) }
 
   // Link de un aviso (…/tickets-allianz?ticket=7): abre ese ticket y lo resalta. Si no está entre los
@@ -153,7 +218,7 @@ export default function TicketsAllianz() {
   const r = data?.resumen
   return (
     <div className="max-w-5xl mx-auto animate-fade-in">
-      <div className="hero-eyebrow">Sandbox · pre-producción</div>
+      <div className="hero-eyebrow">{enVivo.length ? `En vivo · ${enVivo.join(' y ')}` : 'Sandbox · pre-producción'}</div>
       <h1 className="hero-title text-4xl text-deep mb-2">Ticket Allianz Seguimiento</h1>
       <p className="text-muted font-light mb-6">
         Por cada correo, el agente <b>propone</b> una acción y redacta el mensaje — pero <b>no envía nada</b> al
@@ -180,6 +245,8 @@ export default function TicketsAllianz() {
           </button>
         </div>
       </div>
+
+      <EnvioReal estado={envio} onCambio={setEnvio} />
 
       <AbrirTramite onListo={(m) => { setMsg({ ok: true, text: `${m} ✓` }); load() }} />
 
