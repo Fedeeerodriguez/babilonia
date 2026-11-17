@@ -103,6 +103,43 @@ Los mensajes de ${label.toLowerCase()} van a salir de verdad a asesores, cliente
   )
 }
 
+// Cobranza en modo resumen (gestor ≥ PR #16): los avisos no salen uno por uno; una vez por día hábil sale un
+// WhatsApp por asesor y un correo a Ceci y Yans. Acá se ve lo acumulado y el texto del correo.
+function ResumenCobranza() {
+  const [r, setR] = useState(null)
+  const [abierto, setAbierto] = useState(false)
+  useEffect(() => { tapi.get('/api/tickets-allianz/cobranza/resumen').then(x => setR(x.data)).catch(() => {}) }, [])
+  if (!r || r.modo !== 'resumen') return null
+  const a = r.acumulado || {}
+  const texto = r.vista_previa || r.ultimo?.cuerpo
+  return (
+    <div className="card p-5 shadow-soft mb-5">
+      <div className="text-[11px] uppercase tracking-wider text-muted mb-1">Resumen diario · {r.hora_mx} h, lunes a viernes</div>
+      {a.polizas ? (
+        <p className="text-deep text-[14px]">
+          Para el próximo resumen: <b>{a.polizas}</b> pólizas ({a.avisos} avisos) de <b>{a.asesores}</b> asesores.
+          {a.sin_asesor ? <span className="text-amber-700"> {a.sin_asesor} sin asesor para avisar.</span> : null}
+        </p>
+      ) : (
+        <p className="text-muted text-[14px]">
+          No hay cargos rechazados acumulados.
+          {r.ultimo?.en ? ` Último resumen: ${new Date(r.ultimo.en).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' })}${r.ultimo.enviado ? ' (enviado)' : ' (vista previa, no se envió)'}.` : ''}
+        </p>
+      )}
+      {texto && (
+        <>
+          <button id="ver-resumen-cobranza" onClick={() => setAbierto(v => !v)} className="mt-2 text-cobalt-700 text-[13px]">
+            {abierto ? 'Ocultar' : 'Ver'} el correo para Ceci y Yans
+          </button>
+          {abierto && (
+            <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap rounded-lg bg-bone-100 p-3 text-[12px] text-deep">{texto}</pre>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
 // Lleva la vista al ticket dejando lugar para la barra superior fija (si no, le tapa el título).
 function irAlTicket(id) {
   const el = document.getElementById(`ticket-${id}`)
@@ -259,10 +296,13 @@ export default function TicketsAllianz() {
         ))}
       </div>
       {filtro === 'cobranza' && (
-        <p className="text-[12px] text-muted -mt-3 mb-5">
-          Cargos automáticos que no pasaron (últimos 14 días). Por cada uno se avisa al asesor y a ti; al cliente
-          no, porque le escribe el equipo de cobranza. Revisa el texto de cada aviso y califícalo.
-        </p>
+        <>
+          <p className="text-[12px] text-muted -mt-3 mb-5">
+            Cargos automáticos que no pasaron (últimos 14 días). Se avisa al asesor y a ti; al cliente no, porque le
+            escribe el equipo de cobranza.
+          </p>
+          <ResumenCobranza />
+        </>
       )}
 
       {msg && (
