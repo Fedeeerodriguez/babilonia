@@ -43,6 +43,103 @@ const chipCalif = (c) =>
   : c === 'mala' ? 'bg-rose-100 text-rose-700'
   : 'bg-bone-200 text-muted'
 
+// Interruptor de envío real por proceso (gestor ≥ PR #15). DRY_RUN es el freno general: con él prendido no
+// sale nada aunque el interruptor esté en "Sale de verdad". Si la API no tiene el endpoint, no se muestra.
+const PROCESOS_ENVIO = [['tickets', 'Tickets'], ['cobranza', 'Cobranzas']]
+
+function EnvioReal({ estado, onCambio }) {
+  const [busy, setBusy] = useState(null)
+  const [error, setError] = useState(null)
+  if (!estado) return null
+  const cambiar = async (p, label, prender) => {
+    if (prender && !window.confirm(
+      `¿Prender el envío real de ${label}?
+
+Los mensajes de ${label.toLowerCase()} van a salir de verdad a asesores, clientes y Allianz.`
+    )) return
+    setBusy(p); setError(null)
+    try {
+      const r = await tapi.put(`/api/tickets-allianz/envio/${p}`, { encendido: prender })
+      onCambio(r.data)
+    } catch (err) {
+      setError(err.response?.data?.detail || 'No se pudo cambiar el envío')
+    } finally { setBusy(null) }
+  }
+  return (
+    <div className="card p-5 shadow-soft mb-6">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
+        <div className="text-[11px] uppercase tracking-wider text-muted">Envío real</div>
+        {estado.dry_run && (
+          <div className="text-[12px] text-amber-700">
+            Modo prueba general (DRY_RUN): no sale nada aunque un proceso esté prendido.
+          </div>
+        )}
+      </div>
+      <div className="grid sm:grid-cols-2 gap-3">
+        {PROCESOS_ENVIO.map(([p, label]) => {
+          const e = estado.procesos?.[p] || {}
+          const cuando = e.cambiado_en ? new Date(e.cambiado_en).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' }) : null
+          return (
+            <div key={p} className="flex items-center justify-between gap-3 rounded-lg border border-border px-4 py-3">
+              <div>
+                <div className="text-deep font-medium">{label}</div>
+                <div className={`text-[12px] ${e.real ? 'text-emerald-700' : 'text-muted'}`}>
+                  {e.real ? 'Sale de verdad' : e.encendido ? 'Prendido, frenado por el modo prueba' : 'Simulado: se arma pero no sale'}
+                </div>
+                {cuando && <div className="text-[11px] text-muted">Cambiado {cuando}{e.cambiado_por ? ` · ${String(e.cambiado_por).replace('panel:', '')}` : ''}</div>}
+              </div>
+              <button id={`envio-${p}`} role="switch" aria-checked={!!e.encendido} disabled={busy === p}
+                onClick={() => cambiar(p, label, !e.encendido)}
+                className={`relative w-11 h-6 rounded-full transition-colors shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-cobalt-500 ${e.encendido ? 'bg-emerald-600' : 'bg-bone-400'} ${busy === p ? 'opacity-50' : ''}`}>
+                <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${e.encendido ? 'translate-x-5' : ''}`} />
+                <span className="sr-only">{e.encendido ? `Apagar ${label}` : `Prender ${label}`}</span>
+              </button>
+            </div>
+          )
+        })}
+      </div>
+      {error && <div className="mt-2 text-[12px] text-rose-600">{error}</div>}
+    </div>
+  )
+}
+
+// Cobranza en modo resumen (gestor ≥ PR #16): los avisos no salen uno por uno; una vez por día hábil sale un
+// WhatsApp por asesor y un correo a Ceci y Yans. Acá se ve lo acumulado y el texto del correo.
+function ResumenCobranza() {
+  const [r, setR] = useState(null)
+  const [abierto, setAbierto] = useState(false)
+  useEffect(() => { tapi.get('/api/tickets-allianz/cobranza/resumen').then(x => setR(x.data)).catch(() => {}) }, [])
+  if (!r || r.modo !== 'resumen') return null
+  const a = r.acumulado || {}
+  const texto = r.vista_previa || r.ultimo?.cuerpo
+  return (
+    <div className="card p-5 shadow-soft mb-5">
+      <div className="text-[11px] uppercase tracking-wider text-muted mb-1">Resumen diario · {r.hora_mx} h, lunes a viernes</div>
+      {a.polizas ? (
+        <p className="text-deep text-[14px]">
+          Para el próximo resumen: <b>{a.polizas}</b> pólizas ({a.avisos} avisos) de <b>{a.asesores}</b> asesores.
+          {a.sin_asesor ? <span className="text-amber-700"> {a.sin_asesor} sin asesor para avisar.</span> : null}
+        </p>
+      ) : (
+        <p className="text-muted text-[14px]">
+          No hay cargos rechazados acumulados.
+          {r.ultimo?.en ? ` Último resumen: ${new Date(r.ultimo.en).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' })}${r.ultimo.enviado ? ' (enviado)' : ' (vista previa, no se envió)'}.` : ''}
+        </p>
+      )}
+      {texto && (
+        <>
+          <button id="ver-resumen-cobranza" onClick={() => setAbierto(v => !v)} className="mt-2 text-cobalt-700 text-[13px]">
+            {abierto ? 'Ocultar' : 'Ver'} el correo para Ceci y Yans
+          </button>
+          {abierto && (
+            <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap rounded-lg bg-bone-100 p-3 text-[12px] text-deep">{texto}</pre>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
 // Lleva la vista al ticket dejando lugar para la barra superior fija (si no, le tapa el título).
 function irAlTicket(id) {
   const el = document.getElementById(`ticket-${id}`)
@@ -77,6 +174,11 @@ export default function TicketsAllianz() {
       .finally(() => setLoading(false))
   }
   useEffect(() => { if (ticketsAllianzConfigurada) load(); else setLoading(false) }, [])
+  const [envio, setEnvio] = useState(null)       // estado del interruptor por proceso (null = API sin endpoint)
+  useEffect(() => {
+    if (ticketsAllianzConfigurada) tapi.get('/api/tickets-allianz/envio').then(r => setEnvio(r.data)).catch(() => {})
+  }, [])
+  const enVivo = PROCESOS_ENVIO.filter(([p]) => envio?.procesos?.[p]?.real).map(([, l]) => l)
   const cambiarFiltro = (f) => { setFiltro(f); load(f) }
 
   // Link de un aviso (…/tickets-allianz?ticket=7): abre ese ticket y lo resalta. Si no está entre los
@@ -153,7 +255,7 @@ export default function TicketsAllianz() {
   const r = data?.resumen
   return (
     <div className="max-w-5xl mx-auto animate-fade-in">
-      <div className="hero-eyebrow">Sandbox · pre-producción</div>
+      <div className="hero-eyebrow">{enVivo.length ? `En vivo · ${enVivo.join(' y ')}` : 'Sandbox · pre-producción'}</div>
       <h1 className="hero-title text-4xl text-deep mb-2">Ticket Allianz Seguimiento</h1>
       <p className="text-muted font-light mb-6">
         Por cada correo, el agente <b>propone</b> una acción y redacta el mensaje — pero <b>no envía nada</b> al
@@ -181,6 +283,8 @@ export default function TicketsAllianz() {
         </div>
       </div>
 
+      <EnvioReal estado={envio} onCambio={setEnvio} />
+
       <AbrirTramite onListo={(m) => { setMsg({ ok: true, text: `${m} ✓` }); load() }} />
 
       <div className="flex flex-wrap gap-2 mb-5">
@@ -192,10 +296,13 @@ export default function TicketsAllianz() {
         ))}
       </div>
       {filtro === 'cobranza' && (
-        <p className="text-[12px] text-muted -mt-3 mb-5">
-          Cargos automáticos que no pasaron (últimos 14 días). Por cada uno se avisa al asesor y a ti; al cliente
-          no, porque le escribe el equipo de cobranza. Revisa el texto de cada aviso y califícalo.
-        </p>
+        <>
+          <p className="text-[12px] text-muted -mt-3 mb-5">
+            Cargos automáticos que no pasaron (últimos 14 días). Se avisa al asesor y a ti; al cliente no, porque le
+            escribe el equipo de cobranza.
+          </p>
+          <ResumenCobranza />
+        </>
       )}
 
       {msg && (
