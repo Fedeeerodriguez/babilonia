@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Bell, ChevronDown, ChevronRight, UserCheck, AlertTriangle, FileCheck2, Send, FilePlus2, Paperclip, Eye, MessageCircle, FileText } from 'lucide-react'
+import { Bell, ChevronDown, ChevronRight, UserCheck, AlertTriangle, FileCheck2, Send, FilePlus2, Paperclip, Eye, MessageCircle, FileText, Mail } from 'lucide-react'
 import tapi, { usuarioActual } from '../utils/ticketsAllianzApi'
 
 // Etapa 1 del gestor Allianz (proceso largo): en qué etapa está el ticket, cuándo es el próximo
@@ -18,7 +18,7 @@ export const MOTIVO_CECI = {
   revisar: 'Revisar a mano',
   rebote: 'Respuesta rebotada',
   guia_por_aprobar: 'Guía de aportación por aprobar',
-  solicitud_tommy: 'El cliente pidió un trámite',
+  solicitud_tommy: 'Solicitud de trámite para revisar',
 }
 
 const PROCESO = { largo: 'Proceso largo', corto: 'Proceso corto', tramite: 'Trámite', cobranza: 'Cobranza' }
@@ -356,14 +356,19 @@ const verArchivo = (a) => {
 const kb = (n) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`)
 const diaHora = (iso) => new Date(iso).toLocaleString('es-MX', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
 
-function ArchivosWhatsapp({ poliza, wa, setWa, onCambio, auto = false }) {
+// La solicitud firmada que llegó por correo (asesor, cliente o equipo) trae sus adjuntos: se usan esos.
+function ArchivosWhatsapp({ poliza, wa, setWa, onCambio, auto = false, solicitudId = null, origen = null }) {
+  const porCorreo = origen === 'correo' && solicitudId != null
   const traer = async () => {
     setWa({ cargando: true, archivos: [] })
     try {
-      const r = (await tapi.post('/api/tickets-allianz/tramites/archivos-whatsapp', { poliza: poliza.trim(), dias: 14 })).data
+      const r = porCorreo
+        ? (await tapi.get(`/api/tickets-allianz/tramites/solicitud/${solicitudId}/archivos`)).data
+        : (await tapi.post('/api/tickets-allianz/tramites/archivos-whatsapp', { poliza: poliza.trim(), dias: 14 })).data
       setWa({ ...r, archivos: (r.archivos || []).map(a => ({ ...a, elegido: auto })) })
     } catch (err) {
-      setWa({ ok: false, motivo: err.response?.data?.detail || 'No se pudieron traer los archivos de WhatsApp.', archivos: [] })
+      setWa({ ok: false, motivo: err.response?.data?.detail
+        || (porCorreo ? 'No se pudieron traer los adjuntos del correo.' : 'No se pudieron traer los archivos de WhatsApp.'), archivos: [] })
     }
   }
   useEffect(() => { if (auto && poliza.trim()) traer() }, [])  // eslint-disable-line react-hooks/exhaustive-deps
@@ -375,7 +380,9 @@ function ArchivosWhatsapp({ poliza, wa, setWa, onCambio, auto = false }) {
     <div className="space-y-2">
       <button type="button" id="tramite-traer-whatsapp" disabled={!poliza.trim() || wa?.cargando} onClick={traer}
         className="text-[12px] text-cobalt-700 flex items-center gap-1 disabled:opacity-50">
-        <MessageCircle size={13} /> {wa?.cargando ? 'Buscando en WhatsApp…' : 'Traer archivos de WhatsApp del cliente'}
+        {porCorreo ? <Mail size={13} /> : <MessageCircle size={13} />}{' '}
+        {wa?.cargando ? (porCorreo ? 'Buscando los adjuntos…' : 'Buscando en WhatsApp…')
+          : (porCorreo ? 'Traer los adjuntos del correo' : 'Traer archivos de WhatsApp del cliente')}
       </button>
       {wa && !wa.cargando && (
         <div className={`text-[12px] ${wa.ok ? 'text-muted' : 'text-rose-600'}`}>
@@ -511,7 +518,8 @@ export function AbrirTramite({ onListo, inicial = null }) {
               onChange={e => { setArchivos(Array.from(e.target.files || [])); setVista(null) }} />
           </label>
           {archivos.length > 0 && <div className="text-[12px] text-muted">{archivos.map(a => a.name).join(' · ')}</div>}
-          <ArchivosWhatsapp poliza={f.poliza} wa={wa} setWa={setWa} onCambio={() => setVista(null)} auto={!!inicial} />
+          <ArchivosWhatsapp poliza={f.poliza} wa={wa} setWa={setWa} onCambio={() => setVista(null)} auto={!!inicial}
+            solicitudId={inicial?.solicitud_id ?? null} origen={inicial?.origen ?? null} />
 
           {vista && (
             <div className="rounded-lg border border-border/60 bg-white/70 p-3 space-y-1.5 text-[12px]">
@@ -538,6 +546,8 @@ export function AbrirTramite({ onListo, inicial = null }) {
 
 // Etapa 3B: el cliente le pidió el trámite a Tommy por WhatsApp. Ceci lo revisa y lo abre (el mismo
 // formulario, ya completo y con los archivos de WhatsApp marcados) o lo descarta. Nada sale sin ella.
+const QUIEN = { asesor: 'el asesor', cliente: 'el cliente', equipo: 'alguien del equipo', otro: 'un remitente desconocido' }
+
 export function SolicitudTommy({ t, onListo }) {
   const [revisando, setRevisando] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -557,13 +567,32 @@ export function SolicitudTommy({ t, onListo }) {
   }
   return (
     <div className="mx-5 mt-3 rounded-lg border border-cobalt-200 bg-cobalt-50/60 p-3 space-y-2 text-[12px]">
-      <div className="flex items-center gap-1.5 font-semibold text-deep">
-        <MessageCircle size={14} /> El cliente pidió por WhatsApp: {s.tramite_nombre || s.tramite}
-      </div>
-      <div className="text-muted">
-        Tommy ya le pidió los requisitos{s.archivos ? ` y el cliente mandó ${s.archivos} archivo(s)` : ''}.
-        Revisa que sean los correctos antes de abrirlo con Allianz.
-      </div>
+      {s.origen === 'correo' ? (
+        <>
+          <div className="flex items-center gap-1.5 font-semibold text-deep">
+            <Mail size={14} /> Llegó por correo: {s.tramite_nombre || s.tramite}
+          </div>
+          <div className="text-muted">
+            La mandó {QUIEN[s.quien] || 'alguien'} ({s.remitente}) a integraciones@ con {s.archivos} adjunto(s).
+            Revisa que sean los correctos antes de abrirlo con Allianz.
+          </div>
+          {s.quien === 'otro' && (
+            <div className="text-rose-600 flex items-center gap-1">
+              <AlertTriangle size={13} /> No es el asesor ni el cliente registrados en Notion: confirma que sea legítima.
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          <div className="flex items-center gap-1.5 font-semibold text-deep">
+            <MessageCircle size={14} /> El cliente pidió por WhatsApp: {s.tramite_nombre || s.tramite}
+          </div>
+          <div className="text-muted">
+            Tommy ya le pidió los requisitos{s.archivos ? ` y el cliente mandó ${s.archivos} archivo(s)` : ''}.
+            Revisa que sean los correctos antes de abrirlo con Allianz.
+          </div>
+        </>
+      )}
       {s.nota && <div className="text-deep">Nota del cliente: «{s.nota}»</div>}
       {error && <div className="text-rose-600">{error}</div>}
       {!revisando ? (
@@ -575,7 +604,8 @@ export function SolicitudTommy({ t, onListo }) {
             className="text-[12px] px-3 py-1.5 border border-border rounded-lg bg-white/80">Descartar</button>
         </div>
       ) : (
-        <AbrirTramite inicial={{ tramite: s.tramite, poliza: t.poliza, nota: s.nota, solicitud_id: t.id }} onListo={onListo} />
+        <AbrirTramite inicial={{ tramite: s.tramite, poliza: t.poliza, nota: s.nota, solicitud_id: t.id, origen: s.origen }}
+          onListo={onListo} />
       )}
     </div>
   )
